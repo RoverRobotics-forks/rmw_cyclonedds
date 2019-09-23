@@ -15,15 +15,16 @@
 #ifndef RMW_CYCLONEDDS_CPP__SERDES_HPP_
 #define RMW_CYCLONEDDS_CPP__SERDES_HPP_
 
-#include <string.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include <string.h>
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <string>
-#include <vector>
 #include <type_traits>
+#include <vector>
 
 #include "rmw_cyclonedds_cpp/deserialization_exception.hpp"
 
@@ -36,10 +37,15 @@ public:
   cycser() = delete;
 
   template <typename T>
-  cycser & operator<<(const T &x) {serialize(x); return *this;}
+  cycser & operator<<(const T & x)
+  {
+    serialize(x);
+    return *this;
+  }
 
   template <typename T>
-  void serialize(T x) {
+  void serialize(T x)
+  {
     if ((off % sizeof(T)) != 0) {
       off += sizeof(T) - (off % sizeof(T));
     }
@@ -48,23 +54,20 @@ public:
     off += sizeof(T);
   }
 
-  inline void serialize(bool x)
-  {
-      serialize(static_cast<unsigned char>(x));
-  }
+  inline void serialize(bool x) { serialize(static_cast<unsigned char>(x)); }
 
-  inline void serialize(const std::string & x)
-  {
-      serialize_list(x.c_str(), x.size()+1);
-  }
+  inline void serialize(const std::string & x) { serialize_list(x.c_str(), x.size() + 1); }
 
   inline void serialize(const std::wstring & x)
   {
-      serialize_list(x.c_str(), x.size()); // todo: is the size right or do we need to include the null terminator?
+    serialize_list(
+      x.c_str(),
+      x.size());  // todo: is the size right or do we need to include the null terminator?
   }
 
   template <typename T>
-  void serialize_many(const T * x, size_t cnt) {
+  void serialize_many(const T * x, size_t cnt)
+  {
     if (cnt > 0) {
       if ((off % sizeof(T)) != 0) {
         off += sizeof(T) - (off % sizeof(T));
@@ -75,18 +78,20 @@ public:
     }
   }
 
-  template<class T>
+  template <class T>
   inline void serialize(const std::vector<T> & x)
   {
-      serialize_list(x.data(), x.size());
+    serialize_list(x.data(), x.size());
   }
   inline void serialize(const std::vector<bool> & x)
   {
     serialize(static_cast<uint32_t>(x.size()));
-    for (bool i : x) {serialize(i);}
+    for (bool i : x) {
+      serialize(i);
+    }
   }
 
-  template<class T>
+  template <class T>
   inline void serialize_list(const T * x, size_t cnt)
   {
     serialize(static_cast<uint32_t>(cnt));
@@ -94,8 +99,8 @@ public:
   }
 
 private:
-  inline void resize(size_t n) {dst.resize(n + 4);}
-  inline unsigned char * data() {return dst.data() + 4;}
+  inline void resize(size_t n) { dst.resize(n + 4); }
+  inline unsigned char * data() { return dst.data() + 4; }
 
   std::vector<unsigned char> & dst;
   size_t off;
@@ -108,33 +113,15 @@ public:
   cycdeserbase() = delete;
 
 protected:
-  inline uint16_t bswap2u(uint16_t x)
+  template <typename T>
+  T maybe_bswap(T value)
   {
-    return (uint16_t) ((x >> 8) | (x << 8));
+      auto bytes = reinterpret_cast<unsigned char *>(value);
+      for (auto i = 0; i < sizeof(T) / 2; i++) {
+          std::swap(bytes[i], bytes[sizeof(T) - 1 - i]);
+      }
+      return value;
   }
-  inline int16_t bswap2(int16_t x)
-  {
-    return (int16_t) bswap2u((uint16_t) x);
-  }
-  inline uint32_t bswap4u(uint32_t x)
-  {
-    return (x >> 24) | ((x >> 8) & 0xff00) | ((x << 8) & 0xff0000) | (x << 24);
-  }
-  inline int32_t bswap4(int32_t x)
-  {
-    return (int32_t) bswap4u((uint32_t) x);
-  }
-  inline uint64_t bswap8u(uint64_t x)
-  {
-    const uint32_t newhi = bswap4u((uint32_t) x);
-    const uint32_t newlo = bswap4u((uint32_t) (x >> 32));
-    return ((uint64_t) newhi << 32) | (uint64_t) newlo;
-  }
-  inline int64_t bswap8(int64_t x)
-  {
-    return (int64_t) bswap8u((uint64_t) x);
-  }
-
   inline void align(size_t a)
   {
     if ((pos % a) != 0) {
@@ -166,134 +153,92 @@ protected:
 
 class cycdeser : cycdeserbase
 {
+
 public:
   cycdeser(const void * data, size_t size);
   cycdeser() = delete;
 
-  template<typename T>
-  inline cycdeser & operator>>(T && x) {deserialize(x); return *this;}
-
-
-#define DESER8(T) DESER(T, )
-#define DESER(T, fn_swap) inline void deserialize(T & x) { \
-    align(sizeof(x)); \
-    validate_size(1, sizeof(x)); \
-    x = *reinterpret_cast<const T *>(data + pos); \
-    if (swap_bytes) {x = fn_swap(x);} \
-    pos += sizeof(x); \
-}
-  DESER8(char);
-  DESER8(int8_t);
-  DESER8(uint8_t);
-  DESER(int16_t, bswap2);
-  DESER(uint16_t, bswap2u);
-  DESER(int32_t, bswap4);
-  DESER(uint32_t, bswap4u);
-  DESER(int64_t, bswap8);
-  DESER(uint64_t, bswap8u);
-#undef DESER
-
-  inline void deserialize(bool & x)
+  template <typename T>
+  inline cycdeser & operator>>(T && x)
   {
-    unsigned char z; deserialize(z); x = (z != 0);
+    deserialize(x);
+    return *this;
   }
-  inline void deserialize(float & x)
+
+  template <typename T>
+  T deserialize()
   {
-    deserialize(*reinterpret_cast<uint32_t *>(&x));
+      static_assert(std::is_integral<T>::value, "Should only be used with integral types");
+    align(sizeof(T));
+    validate_size(1, sizeof(T));
+    T x = maybe_bswap(*reinterpret_cast<const T *>(data + pos));
+    pos += sizeof(T);
+    return x;
   }
-  inline void deserialize(double & x)
+
+  template <>
+  bool deserialize<bool>()
   {
-    deserialize(*reinterpret_cast<uint64_t *>(&x));
+    return (deserialize<unsigned char>() != 0);
   }
-  inline uint32_t deserialize_len(size_t el_sz)
+
+  inline size_t deserialize_len(size_t el_sz)
   {
-    uint32_t sz;
-    deserialize(sz);
+    auto sz = deserialize<uint32_t>();
     validate_size(sz, el_sz);
     return sz;
   }
-  inline void deserialize(std::string & x)
+
+  template <>
+  std::string deserialize<std::string>()
   {
-    const uint32_t sz = deserialize_len(sizeof(char));
+    std::string x;
+    const size_t sz = deserialize_len(sizeof(char));
     if (sz == 0) {
-      x = std::string("");
+      return std::string("");
     } else {
-      validate_str(sz);
-      x = std::string(data + pos, sz - 1);
+      std::string x(data + pos);
+      deserialize_many(std::begin(x), std::end(x));
+
+      // read, validate, and discard the null terminator
+      if (deserialize<char>() != '\0') {
+        throw DeserializationException("string data is not null-terminated");
+      }
+
+      return x;
     }
-    pos += sz;
   }
-  inline void deserialize(std::wstring & x)
+
+  template <>
+  std::wstring deserialize()
   {
-    const uint32_t sz = deserialize_len(sizeof(wchar_t));
     // wstring is not null-terminated in cdr
-    x = std::wstring(reinterpret_cast<const wchar_t *>(data + pos), sz);
-    pos += sz * sizeof(wchar_t);
+    auto vec = deserialize<std::vector<wchar_t>>();
+    return std::wstring(vec.begin(), vec.end());
   }
 
-#define DESER8_A(T) DESER_A(T, )
-#define DESER_A(T, fn_swap) inline void deserializeA(T * x, size_t cnt) { \
-    if (cnt > 0) { \
-      align(sizeof(T)); \
-      validate_size(cnt, sizeof(T)); \
-      if (swap_bytes) { \
-        for (size_t i = 0; i < cnt; i++) { \
-          x[i] = fn_swap(*reinterpret_cast<const T *>(data + pos)); \
-          pos += sizeof(T); \
-        } \
-      } else { \
-        memcpy(reinterpret_cast<void *>(x), reinterpret_cast<const void *>(data + pos), \
-          cnt * sizeof(T)); \
-        pos += cnt * sizeof(T); \
-      } \
-    } \
-}
-  DESER8_A(char);
-  DESER8_A(int8_t);
-  DESER8_A(uint8_t);
-  DESER_A(int16_t, bswap2);
-  DESER_A(uint16_t, bswap2u);
-  DESER_A(int32_t, bswap4);
-  DESER_A(uint32_t, bswap4u);
-  DESER_A(int64_t, bswap8);
-  DESER_A(uint64_t, bswap8u);
-#undef DESER_A
-
-  inline void deserializeA(float * x, size_t cnt)
+  template <typename OutputIterator>
+  void deserialize_many(OutputIterator begin, OutputIterator end)
   {
-    deserializeA(reinterpret_cast<uint32_t *>(x), cnt);
-  }
-  inline void deserializeA(double * x, size_t cnt)
-  {
-    deserializeA(reinterpret_cast<uint64_t *>(x), cnt);
-  }
-
-  template<class T>
-  inline void deserializeA(T * x, size_t cnt)
-  {
-    for (size_t i = 0; i < cnt; i++) {deserialize(x[i]);}
-  }
-
-  template<class T>
-  inline void deserialize(std::vector<T> & x)
-  {
-    const uint32_t sz = deserialize_len(1);
-    x.resize(sz);
-    deserializeA(x.data(), sz);
-  }
-  inline void deserialize(std::vector<bool> & x)
-  {
-    const uint32_t sz = deserialize_len(sizeof(unsigned char));
-    x.resize(sz);
-    for (size_t i = 0; i < sz; i++) {
-      x[i] = ((data + pos)[i] != 0);
+    while (begin != end) {
+      *(begin++) = deserialize<typename OutputIterator::value_type>();
     }
-    pos += sz;
   }
-  template<class T, size_t S>
-  inline void deserialize(std::array<T, S> & x)
+
+  template<typename T>
+  std::vector<T> deserialize_list(){
+      std::vector<T> x(deserialize_len(sizeof(T)));
+      deserialize_many(x.begin(), x.end());
+      return x;
+  }
+
+  template <typename T, size_t S>
+  std::array<T, S> deserialize_array()
   {
-    deserializeA(x.data(), x.size());
+      // todo: does this need a count?
+      std::array<T, S> x;
+      deserialize_many(x.begin(), x.end());
+      return x;
   }
 };
 
@@ -303,74 +248,138 @@ public:
   cycprint(char * buf, size_t bufsize, const void * data, size_t size);
   cycprint() = delete;
 
-  void print_constant(const char * x)
+  void print_constant(const char * x) { prtf(&buf, &bufsize, "%s", x); }
+
+  inline cycprint & operator>>(bool & x)
   {
-    prtf(&buf, &bufsize, "%s", x);
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(char & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(int8_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(uint8_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(int16_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(uint16_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(int32_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(uint32_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(int64_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(uint64_t & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(float & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(double & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(char *& x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(std::string & x)
+  {
+    print(x);
+    return *this;
+  }
+  inline cycprint & operator>>(std::wstring & x)
+  {
+    print(x);
+    return *this;
+  }
+  template <class T>
+  inline cycprint & operator>>(std::vector<T> & x)
+  {
+    print(x);
+    return *this;
+  }
+  template <class T, size_t S>
+  inline cycprint & operator>>(std::array<T, S> & x)
+  {
+    print(x);
+    return *this;
   }
 
-  inline cycprint & operator>>(bool & x) {print(x); return *this;}
-  inline cycprint & operator>>(char & x) {print(x); return *this;}
-  inline cycprint & operator>>(int8_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(uint8_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(int16_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(uint16_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(int32_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(uint32_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(int64_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(uint64_t & x) {print(x); return *this;}
-  inline cycprint & operator>>(float & x) {print(x); return *this;}
-  inline cycprint & operator>>(double & x) {print(x); return *this;}
-  inline cycprint & operator>>(char * & x) {print(x); return *this;}
-  inline cycprint & operator>>(std::string & x) {print(x); return *this;}
-  inline cycprint & operator>>(std::wstring & x) {print(x); return *this;}
-  template<class T>
-  inline cycprint & operator>>(std::vector<T> & x) {print(x); return *this;}
-  template<class T, size_t S>
-  inline cycprint & operator>>(std::array<T, S> & x) {print(x); return *this;}
+  template <typename T>
+  inline void print(T & x)
+  {
+    align(sizeof(x));
+    validate_size(1, sizeof(x));
+    x = *reinterpret_cast<const T *>(data + pos);
+    x = maybe_bswap(x);
 
-#define PRNT8(T, F) PRNT(T, F, )
-#define PRNT(T, F, fn_swap) inline void print(T & x) { \
-    align(sizeof(x)); \
-    validate_size(1, sizeof(x)); \
-    x = *reinterpret_cast<const T *>(data + pos); \
-    if (swap_bytes) {x = fn_swap(x);} \
-    prtf(&buf, &bufsize, F, x); \
-    pos += sizeof(x); \
-}
-  PRNT8(char, "'%c'");
-  PRNT8(int8_t, "%" PRId8);
-  PRNT8(uint8_t, "%" PRIu8);
-  PRNT(int16_t, "%" PRId16, bswap2);
-  PRNT(uint16_t, "%" PRIu16, bswap2u);
-  PRNT(int32_t, "%" PRId32, bswap4);
-  PRNT(uint32_t, "%" PRIu32, bswap4u);
-  PRNT(int64_t, "%" PRId64, bswap8);
-  PRNT(uint64_t, "%" PRIu64, bswap8u);
-#undef PRNT
+    prtf(&buf, &bufsize, '%', x);
+    pos += sizeof(x);
+  }
 
   inline void print(bool & x)
   {
     static_cast<void>(x);
-    unsigned char z; print(z);
+    unsigned char z;
+    print(z);
   }
   inline void print(float & x)
   {
-    union { uint32_t u; float f; } tmp;
+    union {
+      uint32_t u;
+      float f;
+    } tmp;
     align(sizeof(x));
     validate_size(1, sizeof(x));
     tmp.u = *reinterpret_cast<const uint32_t *>(data + pos);
-    if (swap_bytes) {tmp.u = bswap4u(tmp.u);}
+    tmp.u = maybe_bswap(tmp.u);
     static_cast<void>(tmp.u);
     prtf(&buf, &bufsize, "%f", tmp.f);
     pos += sizeof(x);
   }
   inline void print(double & x)
   {
-    union { uint64_t u; double f; } tmp;
+    union {
+      uint64_t u;
+      double f;
+    } tmp;
     align(sizeof(x));
     validate_size(1, sizeof(x));
     tmp.u = *reinterpret_cast<const uint64_t *>(data + pos);
-    if (swap_bytes) {tmp.u = bswap8u(tmp.u);}
+    tmp.u = maybe_bswap(tmp.u);
     static_cast<void>(tmp.u);
     prtf(&buf, &bufsize, "%f", tmp.f);
     pos += sizeof(x);
@@ -381,12 +390,13 @@ public:
     align(sizeof(sz));
     validate_size(1, sizeof(sz));
     sz = *reinterpret_cast<const uint32_t *>(data + pos);
-    if (swap_bytes) {sz = bswap4u(sz);}
+    sz = maybe_bswap(sz);
+
     pos += sizeof(sz);
     validate_size(sz, el_sz);
     return sz;
   }
-  inline void print(char * & x)
+  inline void print(char *& x)
   {
     const uint32_t sz = get_len(sizeof(char));
     validate_str(sz);
@@ -413,24 +423,26 @@ public:
     pos += sz * sizeof(wchar_t);
   }
 
-  template<class T>
+  template <class T>
   inline void printA(T * x, size_t cnt)
   {
     prtf(&buf, &bufsize, "{");
     for (size_t i = 0; i < cnt; i++) {
-      if (i != 0) {prtf(&buf, &bufsize, ",");}
+      if (i != 0) {
+        prtf(&buf, &bufsize, ",");
+      }
       print(*x);
     }
     prtf(&buf, &bufsize, "}");
   }
 
-  template<class T>
+  template <class T>
   inline void print(std::vector<T> & x)
   {
     const uint32_t sz = get_len(1);
     printA(x.data(), sz);
   }
-  template<class T, size_t S>
+  template <class T, size_t S>
   inline void print(std::array<T, S> & x)
   {
     printA(x.data(), x.size());
@@ -449,9 +461,9 @@ private:
     if (n < 0) {
       **buf = 0;
       return false;
-    } else if ((size_t) n <= *bufsize) {
-      *buf += (size_t) n;
-      *bufsize -= (size_t) n;
+    } else if ((size_t)n <= *bufsize) {
+      *buf += (size_t)n;
+      *bufsize -= (size_t)n;
       return *bufsize > 0;
     } else {
       *buf += *bufsize;
