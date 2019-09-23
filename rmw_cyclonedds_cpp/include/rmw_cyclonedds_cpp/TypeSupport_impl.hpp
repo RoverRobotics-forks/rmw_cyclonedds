@@ -214,7 +214,7 @@ void serialize_field(
   if (!member->is_array_) {
     ser << *static_cast<T *>(field);
   } else if (member->array_size_ && !member->is_upper_bound_) {
-    ser.serializeA(static_cast<T *>(field), member->array_size_);
+    ser.serialize_many(static_cast<T *>(field), member->array_size_);
   } else {
     std::vector<T> & data = *reinterpret_cast<std::vector<T> *>(field);
     ser << data;
@@ -260,10 +260,10 @@ void serialize_field(
   if (!member->is_array_) {
     ser << *static_cast<T *>(field);
   } else if (member->array_size_ && !member->is_upper_bound_) {
-    ser.serializeA(static_cast<T *>(field), member->array_size_);
+    ser.serialize_many(static_cast<T *>(field), member->array_size_);
   } else {
     auto & data = *reinterpret_cast<typename GenericCSequence<T>::type *>(field);
-    ser.serializeS(reinterpret_cast<T *>(data.data), data.size);
+    ser.serialize_list(reinterpret_cast<T *>(data.data), data.size);
   }
 }
 
