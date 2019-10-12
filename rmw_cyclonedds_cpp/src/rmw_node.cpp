@@ -1085,14 +1085,13 @@ extern "C" rmw_ret_t rmw_fini_publisher_allocation(rmw_publisher_allocation_t * 
   return RMW_RET_ERROR;
 }
 
-extern "C" rmw_publisher_t * rmw_create_publisher(
-  const rmw_node_t * node,
-  const rosidl_message_type_support_t * type_supports, const char * topic_name,
-  const rmw_qos_profile_t * qos_policies, const rmw_publisher_options_t * publisher_options)
+rmw_publisher_t * rmw_create_publisher(
+  const rmw_node_t * node, const rosidl_message_type_support_t * type_supports,
+  const char * topic_name, const rmw_qos_profile_t * qos_policies)
 {
+  // until https://github.com/ros2/rmw/pull/187
   CddsPublisher * pub;
   rmw_publisher_t * rmw_publisher;
-  RET_NULL_X(publisher_options, return nullptr);
   if ((pub = create_cdds_publisher(node, type_supports, topic_name, qos_policies)) == nullptr) {
     goto fail_common_init;
   }
@@ -1103,7 +1102,6 @@ extern "C" rmw_publisher_t * rmw_create_publisher(
   rmw_publisher->topic_name = reinterpret_cast<char *>(rmw_allocate(strlen(topic_name) + 1));
   RET_ALLOC_X(rmw_publisher->topic_name, goto fail_topic_name);
   memcpy(const_cast<char *>(rmw_publisher->topic_name), topic_name, strlen(topic_name) + 1);
-  rmw_publisher->options = *publisher_options;
   return rmw_publisher;
 fail_topic_name:
   rmw_publisher_free(rmw_publisher);
@@ -1114,6 +1112,22 @@ fail_publisher:
   delete pub;
 fail_common_init:
   return nullptr;
+}
+
+template<typename T_rmw_publisher, typename T_rmw_publisher_options>
+rmw_publisher_t * rmw_create_publisher(
+  const rmw_node_t * node, const rosidl_message_type_support_t * type_supports,
+  const char * topic_name, const rmw_qos_profile_t * qos_policies,
+  const T_rmw_publisher_options * publisher_options)
+{
+  // since https://github.com/ros2/rmw/pull/187
+  RET_NULL_X(publisher_options, return nullptr);
+  T_rmw_publisher rmw_publisher =
+    rmw_create_publisher(node, type_supports, topic_name, qos_policies);
+  if (rmw_publisher != nullptr) {
+    rmw_publisher.options = publisher_options;
+  }
+  return rmw_publisher;
 }
 
 extern "C" rmw_ret_t rmw_get_gid_for_publisher(const rmw_publisher_t * publisher, rmw_gid_t * gid)
@@ -1272,17 +1286,16 @@ extern "C" rmw_ret_t rmw_fini_subscription_allocation(rmw_subscription_allocatio
   return RMW_RET_ERROR;
 }
 
-extern "C" rmw_subscription_t * rmw_create_subscription(
-  const rmw_node_t * node,
-  const rosidl_message_type_support_t * type_supports, const char * topic_name,
-  const rmw_qos_profile_t * qos_policies, const rmw_subscription_options_t * subscription_options)
+rmw_subscription_t * rmw_create_subscription(
+  const rmw_node_t * node, const rosidl_message_type_support_t * type_supports,
+  const char * topic_name, const rmw_qos_profile_t * qos_policies, bool ignore_local_publications)
 {
+  // until https://github.com/ros2/rmw/pull/187
   CddsSubscription * sub;
   rmw_subscription_t * rmw_subscription;
-  RET_NULL_X(subscription_options, return nullptr);
-  if ((sub =
-    create_cdds_subscription(node, type_supports, topic_name, qos_policies,
-    subscription_options->ignore_local_publications)) == nullptr)
+  if (
+    (sub = create_cdds_subscription(
+      node, type_supports, topic_name, qos_policies, ignore_local_publications)) == nullptr)
   {
     goto fail_common_init;
   }
@@ -1294,14 +1307,13 @@ extern "C" rmw_subscription_t * rmw_create_subscription(
     reinterpret_cast<const char *>(rmw_allocate(strlen(topic_name) + 1));
   RET_ALLOC_X(rmw_subscription->topic_name, goto fail_topic_name);
   memcpy(const_cast<char *>(rmw_subscription->topic_name), topic_name, strlen(topic_name) + 1);
-  rmw_subscription->options = *subscription_options;
   return rmw_subscription;
 fail_topic_name:
   rmw_subscription_free(rmw_subscription);
 fail_subscription:
   if (dds_delete(sub->rdcondh) < 0) {
-    RCUTILS_LOG_ERROR_NAMED("rmw_cyclonedds_cpp",
-      "failed to delete readcondition during error handling");
+    RCUTILS_LOG_ERROR_NAMED(
+      "rmw_cyclonedds_cpp", "failed to delete readcondition during error handling");
   }
   if (dds_delete(sub->subh) < 0) {
     RCUTILS_LOG_ERROR_NAMED("rmw_cyclonedds_cpp", "failed to delete reader during error handling");
@@ -1309,6 +1321,22 @@ fail_subscription:
   delete sub;
 fail_common_init:
   return nullptr;
+}
+
+template<typename T_rmw_subscription, typename T_rmw_subscription_options>
+rmw_subscription_t * rmw_create_subscription(
+  const rmw_node_t * node, const rosidl_message_type_support_t * type_supports,
+  const char * topic_name, const rmw_qos_profile_t * qos_policies,
+  const T_rmw_subscription_options * subscription_options)
+{
+  // since https://github.com/ros2/rmw/pull/187
+  RET_NULL_X(subscription_options, return nullptr);
+  T_rmw_subscription * rmw_subscription = rmw_create_subscription(
+    node, type_supports, topic_name, qos_policies, subscription_options->ignore_local_publication);
+  if (rmw_subscription != nullptr) {
+    rmw_subscription->options = *subscription_options;
+  }
+  return rmw_subscription;
 }
 
 extern "C" rmw_ret_t rmw_subscription_count_matched_publishers(
