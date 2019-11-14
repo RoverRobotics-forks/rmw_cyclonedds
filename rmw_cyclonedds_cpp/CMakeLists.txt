@@ -63,7 +63,7 @@ add_library(rmw_cyclonedds_cpp
   src/u16string.cpp
   src/exception.cpp
   src/deserialization_exception.cpp
-)
+  src/TypeSupport2.cpp)
 
 target_link_libraries(rmw_cyclonedds_cpp CycloneDDS::ddsc)
 

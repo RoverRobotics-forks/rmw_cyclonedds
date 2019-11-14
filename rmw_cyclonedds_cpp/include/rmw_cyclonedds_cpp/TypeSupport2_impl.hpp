@@ -99,6 +99,14 @@ void MemberRef<MetaMember>::for_each_value(UnaryFunction f)
   }
 }
 
+template <>
+template <typename UnaryFunction, typename Result>
+Result MemberRef<RTI_C>::with_sequence(UnaryFunction f)
+{
+  assert (is_sequence());
+  this->meta_member-
+}
+
 }  // namespace rmw_cyclonedds_cpp
 
 #endif  //ROS2_MASTER_TYPESUPPORT2_IMPL_HPP

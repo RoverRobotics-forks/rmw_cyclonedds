@@ -172,7 +172,7 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
     if (kind != SDK_DATA) {
       /* ROS2 doesn't do keys, so SDK_KEY is trivial */
     } else if (!topic->is_request_header) {
-      rmw_cyclonedds_cpp::with_message(topic->message_type_support, sample,[&](auto message){
+      rmw_cyclonedds_cpp::with_message(&topic->message_type_support, sample,[&](auto message){
         rmw_cyclonedds_cpp::serialize(d->data, message);
       });
     } else {
@@ -181,7 +181,7 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
        * probably incompatible. */
       auto wrap = static_cast<const cdds_request_wrapper_t *>(sample);
 
-      rmw_cyclonedds_cpp::with_message(topic->message_type_support, sample,[&](auto message){
+      rmw_cyclonedds_cpp::with_message(&topic->message_type_support, sample,[&](auto message){
         serialize(d->data, wrap->header.guid, wrap->header.seq, message);
       });
     }
@@ -479,7 +479,7 @@ static std::string get_type_name(const char * type_support_identifier, void * ty
 
 struct sertopic_rmw * create_sertopic(
   const char * topicname, const char * type_support_identifier,
-  void * type_support, bool is_request_header)
+  void * type_support, bool is_request_header, rosidl_message_type_support_t message_type_support)
 {
   struct sertopic_rmw * st = new struct sertopic_rmw;
 #if DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
@@ -503,5 +503,6 @@ struct sertopic_rmw * create_sertopic(
   st->type_support.typesupport_identifier_ = type_support_identifier;
   st->type_support.type_support_ = type_support;
   st->is_request_header = is_request_header;
+  st->message_type_support = message_type_support;
   return st;
 }

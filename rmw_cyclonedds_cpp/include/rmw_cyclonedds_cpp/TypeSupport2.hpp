@@ -114,6 +114,18 @@ struct RTI_C
   static_assert(
     sizeof(WString) == sizeof(rosidl_generator_c__U16String),
     "WString should not add any new members");
+
+  template <typename T>
+  struct PrimitiveSequence
+  {
+    T * _data;
+    size_t _size;
+    size_t _capacity;
+
+    auto begin() const { return _data; }
+    auto end() const { return _data + _size; }
+    auto size() const { return size; }
+  };
 };
 
 struct RTI_Cpp
@@ -141,6 +153,22 @@ auto with_typesupport(const rosidl_message_type_support_t * untyped_typesupport,
   }
   throw std::runtime_error("typesupport not recognized");
 }
+
+template <typename UnaryFunction>
+auto with_typesupport(const rosidl_service_type_support_t * untyped_typesupport, UnaryFunction f)
+{
+  const rosidl_service_type_support_t * ts;
+
+  if ((ts = get_service_typesupport_handle(untyped_typesupport, RTI_C::identifier))) {
+    return f(*static_cast<const RTI_C::MetaService *>(ts->data));
+  } else if ((ts = get_service_typesupport_handle(untyped_typesupport, RTI_Cpp::identifier))) {
+    return f(*static_cast<const RTI_Cpp::MetaService *>(ts->data));
+  }
+  throw std::runtime_error("typesupport not recognized");
+}
+
+std::pair<rosidl_message_type_support_t, rosidl_message_type_support_t>
+get_svc_request_response_typesupports(const rosidl_service_type_support_t * svc);
 
 //////////////////
 template <typename MetaMessage>
@@ -201,11 +229,18 @@ struct MemberRef
         return apply_to_typed_value([](auto && v) { return sizeof(v); }, data, meta_member);
     }
   }
+
+  template <typename UnaryFunction, typename Result>
+  Result with_sequence(UnaryFunction f);
+
   size_t get_sequence_size() const
   {
     assert(is_sequence());
-    assert(meta_member.size_function);
-    return meta_member.size_function(data);
+    if (meta_member.size_function) {
+      return meta_member.size_function(data);
+    }
+    else{
+    }
   }
   bool is_submessage_type() { return ValueType(meta_member.type_id_) == ValueType ::MESSAGE; }
 

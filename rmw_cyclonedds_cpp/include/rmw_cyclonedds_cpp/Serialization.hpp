@@ -31,13 +31,17 @@ struct SizeAccumulator
 
 struct DataAccumulator
 {
-  uint8_t * _data;
+  void * _data;
   size_t _size;
   size_t _capacity;
 
   DataAccumulator() = delete;
-  DataAccumulator(uint8_t * data, size_t capacity, size_t = 0)
-  : _data(data), _size(0), _capacity(capacity){};
+  DataAccumulator(void * data, size_t capacity, size_t size = 0)
+  : _data(data), _size(size), _capacity(capacity)
+  {
+    assert(data);
+    assert(size <= capacity);
+  };
 
   auto size() { return _size; }
 
@@ -45,7 +49,7 @@ struct DataAccumulator
   {
     if (_size + n > _capacity) throw std::length_error("Data exceeds buffer size");
 
-    memcpy(_data + _size, s, n);
+    memcpy((byte *)_data + _size, s, n);
     _size += n;
   }
 };
@@ -171,12 +175,12 @@ void serialize(uint8_t * dest, size_t dest_size, Args &&... args)
 template <typename... Args>
 void serialize(std::vector<uint8_t> & dest, Args &&... args)
 {
-  SizeAccumulator accum{dest.max_size(), dest.size()};
+  size_t start_at = dest.size();
 
-  auto size = get_serialized_size(std::forward<Args>(args)...);
-  DataAccumulator data_accum(&dest.back(), size);
-  dest.resize(dest.size() + accum.size());
+  auto n_new_bytes = get_serialized_size(std::forward<Args>(args)...);
+  dest.resize(start_at + n_new_bytes);
 
+  DataAccumulator data_accum(dest.data() + start_at, n_new_bytes);
   CDRWriter<DataAccumulator> writer{data_accum};
   writer.serialize_top_level(std::forward<Args>(args)...);
 }
