@@ -112,9 +112,9 @@ template<typename MembersType>
 class TypeSupport
 {
 public:
-  bool serializeROSmessage(
-    const void * ros_message, cycser & ser,
-    std::function<void(cycser &)> prefix = nullptr);
+//  bool serializeROSmessage(
+//    const void * ros_message, cycser & ser,
+//    std::function<void(cycser &)> prefix = nullptr);
   bool deserializeROSmessage(
     cycdeser & deser, void * ros_message,
     std::function<void(cycdeser &)> prefix = nullptr);
@@ -132,7 +132,7 @@ protected:
   std::string name;
 
 private:
-  bool serializeROSmessage(cycser & ser, const MembersType * members, const void * ros_message);
+//  bool serializeROSmessage(cycser & ser, const MembersType * members, const void * ros_message);
   bool deserializeROSmessage(
     cycdeser & deser, const MembersType * members, void * ros_message,
     bool call_new);

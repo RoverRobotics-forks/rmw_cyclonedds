@@ -51,9 +51,6 @@ enum class ValueType : uint8_t {
 template <typename UnaryFunction>
 constexpr auto apply_to_primitive_value(UnaryFunction fn, ValueType value_type, void * data);
 
-template <typename RTI, typename UnaryFunction>
-constexpr auto apply_to_value(UnaryFunction fn, typename RTI::MetaMember meta_member, void * data);
-
 struct RTI_C
 {
   static auto get_typesupport_identifier()
@@ -71,9 +68,9 @@ struct RTI_C
   {
     using traits_type = std::char_traits<char>;
 
-    constexpr auto size() const { return rosidl_generator_c__String::size; }
-    constexpr auto begin() const { return data; }
-    constexpr auto end() const { return data + size(); }
+    auto size() const { return rosidl_generator_c__String::size; }
+    auto begin() const { return data; }
+    auto end() const { return data + size(); }
   };
   static_assert(
     sizeof(String) == sizeof(rosidl_generator_c__String), "String should not add any new members");
@@ -82,10 +79,38 @@ struct RTI_C
   {
     using traits_type = std::char_traits<char16_t>;
 
-    constexpr auto size() const { return rosidl_generator_c__U16String::size; }
-    constexpr auto begin() const { return data; }
-    constexpr auto end() const { return data + size(); }
+    auto size() const { return rosidl_generator_c__U16String::size; }
+
+    struct iterator
+    {
+      const WString & str;
+      size_t position;
+      iterator & operator++()
+      {
+        position++;
+        return *this;
+      };
+
+      char16_t operator*()
+      {
+        if (str.size() <= position) {
+          throw std::out_of_range("string index out of range");
+        }
+        return static_cast<char16_t>(str.data[position]);
+      }
+
+      bool operator==(const iterator & other)
+      {
+        assert(&str == &other.str);
+        return position == other.position;
+      }
+      bool operator!=(const iterator & other) { return !(*this == other); }
+    };
+
+    auto begin() const { return iterator{*this, 0}; }
+    auto end() const { return iterator{*this, size()}; }
   };
+
   static_assert(
     sizeof(WString) == sizeof(rosidl_generator_c__U16String),
     "WString should not add any new members");
@@ -102,9 +127,6 @@ struct RTI_Cpp
   using MetaMessage = rosidl_typesupport_introspection_cpp::MessageMembers;
   using MetaMember = rosidl_typesupport_introspection_cpp::MessageMember;
   using MetaService = rosidl_typesupport_introspection_cpp::ServiceMembers;
-
-  using String = std::string;
-  using WString = std::u16string;
 };
 
 template <typename UnaryFunction>
@@ -129,11 +151,11 @@ struct MemberRef;
 
 template <typename UnaryFunction>
 auto apply_to_typed_value(
-  UnaryFunction fn, const void * value_data, const RTI_C::MetaMember & meta_member);
+  UnaryFunction f, const void * value_data, const RTI_C::MetaMember & meta_member);
 
 template <typename UnaryFunction>
 auto apply_to_typed_value(
-  UnaryFunction fn, const void * value_data, const RTI_Cpp::MetaMember & meta_member);
+  UnaryFunction f, const void * value_data, const RTI_Cpp::MetaMember & meta_member);
 
 template <typename MetaMessage>
 struct MessageRef
@@ -171,12 +193,12 @@ struct MemberRef
   size_t get_array_stride() const
   {
     assert(is_array());
-    ValueType value_type(meta_member.type_id_);
+    auto value_type = static_cast<ValueType>(meta_member.type_id_);
     switch (value_type) {
       case ValueType::MESSAGE:
         return with_typesupport(meta_member.members_, [](auto mm) { return mm.size_of_; });
       default:
-        return apply_to_value([](auto && v) { return sizeof(v); }, value_type, nullptr);
+        return apply_to_typed_value([](auto && v) { return sizeof(v); }, data, meta_member);
     }
   }
   size_t get_sequence_size() const
@@ -233,7 +255,7 @@ auto with_message(
 template <typename MetaMessage>
 auto && MessageRef<MetaMessage>::at(size_t index)
 {
-  if (index > meta_message.member_count_) {
+  if (index >= meta_message.member_count_) {
     throw std::out_of_range("index out of range");
   }
   auto & member = meta_message.members_[index];
@@ -241,4 +263,5 @@ auto && MessageRef<MetaMessage>::at(size_t index)
 }
 
 }  // namespace rmw_cyclonedds_cpp
+#include "TypeSupport2_impl.hpp"
 #endif  // ROS2_MASTER_ROSIDL_TYPEINFO_HPP

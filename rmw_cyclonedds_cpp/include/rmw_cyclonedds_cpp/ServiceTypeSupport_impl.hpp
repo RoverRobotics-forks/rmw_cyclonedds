@@ -57,7 +57,6 @@ ResponseTypeSupport<ServiceMembersType, MessageMembersType>::ResponseTypeSupport
   assert(members);
   this->members_ = members->response_members_;
 
-
   std::ostringstream ss;
   std::string service_namespace(members->service_namespace_);
   std::string service_name(members->service_name_);

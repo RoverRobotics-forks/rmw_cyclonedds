@@ -77,7 +77,7 @@ protected:
     }
   }
 
-  void align_and_put(void * data, size_t n_bytes)
+  void align_and_put(const void * data, size_t n_bytes)
   {
     align(n_bytes);
     dst.put_bytes(data, n_bytes);
@@ -87,12 +87,14 @@ public:
   CDRWriter() = delete;
   explicit CDRWriter(Accumulator & dst) : dst(dst) {}
 
-  void serialize_top_level(void * message_data, const rosidl_message_type_support_t * type_support)
+  template <typename... Args>
+  void serialize_top_level(Args... args)
   {
     put_encapsulation_header();
-    with_typesupport(type_support, [&](auto ts) { serialize(make_message_ref(ts, message_data)); });
+    (void)std::initializer_list<int>{(serialize(args), 0)...};
   }
 
+protected:
   void put_encapsulation_header()
   {
     // beginning of message
@@ -104,21 +106,21 @@ public:
   };
 
   template <typename T, std::enable_if_t<std::is_arithmetic<T>::value, bool> = true>
-  void serialize(T data)
+  void serialize(const T & data)
   {
     align(sizeof(data));
-    put_bytes(static_cast<void *>(&data), sizeof(data));
+    put_bytes(static_cast<const void *>(&data), sizeof(data));
   }
 
   template <typename T, typename char_type = typename T::traits_type::char_type>
-  void serialize(T && value)
+  void serialize(const T & value)
   {
     if (sizeof(char_type) == 1) {
       serialize_u32(value.size() + 1);
     } else {
       serialize_u32(value.size() * sizeof(char_type));
     }
-    for (char & s : value) {
+    for (char_type s : value) {
       serialize(s);
     }
     if (sizeof(char_type) == 1) {
@@ -147,22 +149,23 @@ public:
   }
 };
 
-size_t get_serialized_size(void * message_data, const rosidl_message_type_support_t * type_support)
+template <typename... Args>
+size_t get_serialized_size(Args &&... args)
 {
   SizeAccumulator accum;
   CDRWriter<SizeAccumulator> writer{accum};
-  writer.serialize_top_level(message_data, type_support);
+
+  writer.serialize_top_level(std::forward<Args>(args)...);
   return accum.size();
 }
 
-void serialize_entire_ros_message(
-  uint8_t * dest, size_t dest_size, void * message_data,
-  const rosidl_message_type_support_t * type_support)
+template <typename... Args>
+void serialize(uint8_t * dest, size_t dest_size, Args &&... args)
 {
   DataAccumulator accum{dest, dest_size};
-
   CDRWriter<DataAccumulator> writer{accum};
-  writer.serialize_top_level(message_data, type_support);
+
+  writer.serialize_top_level(std::forward<Args>(args)...);
 }
 
 template <typename... Args>
@@ -170,12 +173,12 @@ void serialize(std::vector<uint8_t> & dest, Args &&... args)
 {
   SizeAccumulator accum{dest.max_size(), dest.size()};
 
-  CDRWriter<SizeAccumulator> writer{accum};
-  (void)std::tuple<int>{writer.serialize(args)...};
+  auto size = get_serialized_size(std::forward<Args>(args)...);
+  DataAccumulator data_accum(&dest.back(), size);
+  dest.resize(dest.size() + accum.size());
 
-  DataAccumulator data_accum(&dest.back(), accum.size());
-  dest.resize(accum.size());
-  CDRWriter<DataAccumulator> real_writer{data_accum};
+  CDRWriter<DataAccumulator> writer{data_accum};
+  writer.serialize_top_level(std::forward<Args>(args)...);
 }
 
 }  // namespace rmw_cyclonedds_cpp
