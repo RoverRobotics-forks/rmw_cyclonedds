@@ -48,6 +48,8 @@ enum class ValueType : uint8_t {
   MESSAGE = tsi_enum::ROS_TYPE_MESSAGE,
 };
 
+enum class MemberContainerType { Array, Sequence, SingleValue };
+
 template <typename UnaryFunction>
 constexpr auto apply_to_primitive_value(UnaryFunction fn, ValueType value_type, void * data);
 
@@ -116,15 +118,20 @@ struct RTI_C
     "WString should not add any new members");
 
   template <typename T>
-  struct PrimitiveSequence
+  struct Sequence
   {
-    T * _data;
-    size_t _size;
-    size_t _capacity;
+    T * data_;
+    size_t size_;
+    size_t capacity_;
 
-    auto begin() const { return _data; }
-    auto end() const { return _data + _size; }
-    auto size() const { return size; }
+    T &operator [](size_t index){
+      assert (index<size());
+      return data_[index];
+    };
+
+    size_t size() const { return size_; }
+    auto begin() { return data_; }
+    auto end() { return data_ + size_; }
   };
 };
 
@@ -177,17 +184,35 @@ struct MessageRef;
 template <typename MetaMember>
 struct MemberRef;
 
-template <typename UnaryFunction>
-auto apply_to_typed_value(
-  UnaryFunction f, const void * value_data, const RTI_C::MetaMember & meta_member);
+template <typename MessageMembers>
+struct MessageType
+{
+  MessageMembers mm;
+
+  size_t sizeof_value() const { return mm.size_of_; }
+  using value_type = void;
+  using reference_type = MessageRef<MessageMembers>;
+
+  template <typename UnaryFunction>
+  auto with_value(void * ptr_to_value, UnaryFunction f)
+  {
+    return f(make_member_ref(mm, ptr_to_value));
+  };
+};
 
 template <typename UnaryFunction>
-auto apply_to_typed_value(
-  UnaryFunction f, const void * value_data, const RTI_Cpp::MetaMember & meta_member);
+auto with_typed_ptr(
+  const void * value_data, const RTI_C::MetaMember & meta_member, UnaryFunction f);
+
+template <typename UnaryFunction>
+auto with_typed_ptr(
+  const void * value_data, const RTI_Cpp::MetaMember & meta_member, UnaryFunction f);
 
 template <typename MetaMessage>
 struct MessageRef
 {
+  using MetaMember = std::remove_pointer_t<decltype(MetaMessage::members_)>;
+
   const MetaMessage & meta_message;
   const void * data;
 
@@ -197,51 +222,70 @@ struct MessageRef
 
   size_t size() const { return meta_message.member_count_; }
 
-  auto && at(size_t index);
+  auto at(size_t index) const;
 };
+
+template <typename T>
+struct ArrayRef
+{
+  ArrayRef() = delete;
+
+  T * data;
+  size_t n;
+
+  T &operator [](size_t index){
+    assert (index<size());
+    return data[index];
+  };
+
+  auto size() const { return n; }
+};
+
+template <typename MetaMessage>
+struct ArrayOfMessageRef
+{
+  ArrayOfMessageRef() = delete;
+
+  void * data;
+  size_t n;
+  const MetaMessage & meta_message;
+
+  MessageRef<MetaMessage> operator[](size_t index);
+
+  auto size() const { return n; }
+};
+
 
 template <typename MetaMember>
 struct MemberRef
 {
+  MemberRef(const MetaMember & meta_member, void * data) : meta_member(meta_member), data(data)
+  {
+    assert(data);
+  }
+
   MemberRef() = delete;
   const MetaMember & meta_member;
-  const void * data;
+  void * data;
 
-  bool is_single_value() const { return !meta_member.is_array_; }
-  bool is_array() const { return meta_member.is_array_ && !meta_member.is_upper_bound_; }
-  bool is_sequence() const
+  MemberContainerType get_container_type() const
   {
-    return meta_member.is_array_ && (!meta_member.array_size_ || meta_member.is_upper_bound_);
-  }
-  size_t get_array_size() const
-  {
-    assert(is_array());
-    return meta_member.array_size_;
-  }
-  size_t get_array_stride() const
-  {
-    assert(is_array());
-    auto value_type = static_cast<ValueType>(meta_member.type_id_);
-    switch (value_type) {
-      case ValueType::MESSAGE:
-        return with_typesupport(meta_member.members_, [](auto mm) { return mm.size_of_; });
-      default:
-        return apply_to_typed_value([](auto && v) { return sizeof(v); }, data, meta_member);
-    }
-  }
+    if (!meta_member.is_array_) return MemberContainerType::SingleValue;
+    if (meta_member.is_array_ && !meta_member.is_upper_bound_) return MemberContainerType::Array;
+    if (meta_member.is_array_ && (!meta_member.array_size_ || meta_member.is_upper_bound_))
+      return MemberContainerType::Sequence;
+    throw std::runtime_error("Collection type not recognized");
+  };
 
-  template <typename UnaryFunction, typename Result>
+  template <typename UnaryFunction, typename Result = void>
   Result with_sequence(UnaryFunction f);
 
-  size_t get_sequence_size() const
-  {
-    assert(is_sequence());
-    if (meta_member.size_function) {
-      return meta_member.size_function(data);
-    }
-    else{
-    }
-  }
+  template <typename UnaryFunction, typename Result = void>
+  Result with_array(UnaryFunction f);
+
+  template <typename UnaryFunction, typename Result = void>
+  Result with_single_value(UnaryFunction f);
+
   bool is_submessage_type() { return ValueType(meta_member.type_id_) == ValueType ::MESSAGE; }
 
   template <typename UnaryFunction>
@@ -251,15 +295,30 @@ struct MemberRef
     assert(meta_member.members_);
     with_typesupport(meta_member.members_, f);
   }
-
-  template <typename UnaryFunction>
-  void for_each_value(UnaryFunction f);
 };
 
 template <typename MetaMessage>
 auto make_message_ref(const MetaMessage & meta, const void * data)
 {
   return MessageRef<MetaMessage>{meta, data};
+}
+template <typename MetaMember>
+auto make_member_ref(const MetaMember & meta, void * data)
+{
+  return std::move(MemberRef<MetaMember>{meta, data});
+}
+
+template <typename MetaMember>
+auto make_member_ref(const MetaMember & meta, const void * data)
+{
+  return std::move(MemberRef<MetaMember>{meta, data});
+}
+
+template <typename UnaryFunction>
+auto with_message(
+  const rosidl_message_type_support_t * type_support, const void * data, UnaryFunction f)
+{
+  return with_typesupport(type_support, [&](auto meta) { return f(make_message_ref(meta, data)); });
 }
 
 template <typename MetaService>
@@ -274,27 +333,14 @@ auto make_service_response_ref(const MetaService & meta, const void * data)
   return make_message_ref(meta.response_members_, data);
 }
 
-template <typename MetaMember>
-auto make_member_ref(const MetaMember & meta, const void * data)
-{
-  return MemberRef<MetaMember>{meta, data};
-}
-
-template <typename UnaryFunction>
-auto with_message(
-  const rosidl_message_type_support_t * type_support, const void * data, UnaryFunction f)
-{
-  return with_typesupport(type_support, [&](auto meta) { return f(make_message_ref(meta, data)); });
-}
-
 template <typename MetaMessage>
-auto && MessageRef<MetaMessage>::at(size_t index)
+auto MessageRef<MetaMessage>::at(size_t index) const
 {
   if (index >= meta_message.member_count_) {
     throw std::out_of_range("index out of range");
   }
   auto & member = meta_message.members_[index];
-  return std::move(make_member_ref(member, (byte *)data + member.offset_));
+  return make_member_ref(member, (byte *)data + member.offset_);
 }
 
 }  // namespace rmw_cyclonedds_cpp

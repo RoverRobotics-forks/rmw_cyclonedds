@@ -4,107 +4,191 @@
 
 namespace rmw_cyclonedds_cpp
 {
-
+template <typename T>
+struct declval
+{
+  using type = T;
+};
 
 template <typename UnaryFunction>
-constexpr auto apply_to_primitive_value(UnaryFunction fn, ValueType value_type, const void * data)
+constexpr auto with_type(ValueType value_type, UnaryFunction f)
 {
   switch (value_type) {
     case ValueType::FLOAT:
-      return fn(*static_cast<const float *>(data));
+      return f(declval<float>());
     case ValueType::DOUBLE:
-      return fn(*static_cast<const double *>(data));
+      return f(declval<double>());
     case ValueType::LONG_DOUBLE:
-      return fn(*static_cast<const long double *>(data));
+      return f(declval<long double>());
     case ValueType::WCHAR:
-      return fn(*static_cast<const char16_t *>(data));
+      return f(declval<char16_t>());
     case ValueType::CHAR:
-      return fn(*static_cast<const char *>(data));
+      return f(declval<char>());
     case ValueType::BOOLEAN:
-      return fn(*static_cast<const bool *>(data));
+      return f(declval<bool>());
     case ValueType::OCTET:
-      return fn(*static_cast<const unsigned char *>(data));
+      return f(declval<unsigned char>());
     case ValueType::UINT8:
-      return fn(*static_cast<const uint8_t *>(data));
+      return f(declval<uint8_t>());
     case ValueType::INT8:
-      return fn(*static_cast<const int8_t *>(data));
+      return f(declval<int8_t>());
     case ValueType::UINT16:
-      return fn(*static_cast<const uint16_t *>(data));
+      return f(declval<uint16_t>());
     case ValueType::INT16:
-      return fn(*static_cast<const int16_t *>(data));
+      return f(declval<int16_t>());
     case ValueType::UINT32:
-      return fn(*static_cast<const uint32_t *>(data));
+      return f(declval<uint32_t>());
     case ValueType::INT32:
-      return fn(*static_cast<const int32_t *>(data));
+      return f(declval<int32_t>());
     case ValueType::UINT64:
-      return fn(*static_cast<const uint64_t *>(data));
+      return f(declval<uint64_t>());
     case ValueType::INT64:
-      return fn(*static_cast<const int64_t *>(data));
+      return f(declval<int64_t>());
     default:
       throw std::invalid_argument("not a primitive value");
   }
 }
 
 template <typename UnaryFunction>
-auto apply_to_typed_value(
-  UnaryFunction f, const void * value_data, const RTI_C::MetaMember & meta_member)
+constexpr auto with_type(const RTI_C::MetaMember & meta_member, UnaryFunction f)
 {
   auto vt = (ValueType)meta_member.type_id_;
   switch (vt) {
     case ValueType::MESSAGE:
-      return with_message(meta_member.members_, value_data, f);
+      throw std::invalid_argument("this is a message type");
     case ValueType::STRING:
-      return f(*static_cast<const typename RTI_C::String *>(value_data));
+      return f(declval<RTI_C::String>());
     case ValueType::WSTRING:
-      return f(*static_cast<const typename RTI_C::WString *>(value_data));
+      return f(declval<RTI_C::WString>());
     default:
-      return apply_to_primitive_value(f, vt, value_data);
+      return with_type(vt, f);
   }
 }
 
 template <typename UnaryFunction>
-auto apply_to_typed_value(
-  UnaryFunction f, const void * value_data, const RTI_Cpp::MetaMember & meta_member)
+constexpr auto with_type(const RTI_Cpp::MetaMember & meta_member, UnaryFunction f)
 {
   auto vt = (ValueType)meta_member.type_id_;
   switch (vt) {
     case ValueType::MESSAGE:
-      return with_message(meta_member.members_, value_data, f);
+      throw std::invalid_argument("this is a message type");
     case ValueType::STRING:
-      return f(*static_cast<const std::string *>(value_data));
+      return f(declval<std::string>());
     case ValueType::WSTRING:
-      return f(*static_cast<const std::u16string *>(value_data));
+      return f(declval<std::wstring>());
     default:
-      return apply_to_primitive_value(f, vt, value_data);
+      return with_type(vt, f);
+  }
+}
+
+template <typename UnaryFunction, typename MetaMemberOrValueType>
+constexpr auto with_typed_ptr(void * ptr, MetaMemberOrValueType vt, UnaryFunction f)
+{
+  return with_type(vt, [&](auto x) {
+    using T = typename decltype(x)::type;
+    return f(static_cast<T *>(ptr));
+  });
+
+  //  static_cast<std::add_pointer_t <std::remove_reference_t<decltype(x)>> >(ptr));
+}
+//
+//template <typename UnaryFunction, typename MetaMemberOrValueType>
+//constexpr auto with_typed_ptr(const void * ptr, MetaMemberOrValueType vt, UnaryFunction f)
+//{
+//  return with_type(
+//    vt, [&](auto x) { return f(static_cast<const std::remove_reference_t<decltype(x)> *>(ptr)); });
+//}
+
+template <typename MetaMessage>
+MessageRef<MetaMessage> ArrayOfMessageRef<MetaMessage>::operator[](size_t index)
+{
+  assert(index < n);
+  return make_message_ref(meta_message, (byte *)data + index * meta_message.size_of_);
+}
+
+template <typename MetaMember>
+template <typename UnaryFunction, typename Result>
+Result MemberRef<MetaMember>::with_array(UnaryFunction f)
+{
+  assert(get_container_type() == MemberContainerType::Array);
+
+  auto size = meta_member.array_size_;
+  if (!is_submessage_type()) {
+    return with_typed_ptr(data, meta_member, [&](auto x) {
+      return f(ArrayRef<std::decay_t<decltype(*x)>>{x, size});
+    });
+  } else {
+    return with_submessage_typesupport([&](auto message_members) {
+      return f(ArrayOfMessageRef<decltype(message_members)>{data, size, message_members});
+    });
   }
 }
 
 template <typename MetaMember>
-template <typename UnaryFunction>
-void MemberRef<MetaMember>::for_each_value(UnaryFunction f)
+template <typename UnaryFunction, typename Result>
+Result MemberRef<MetaMember>::with_single_value(UnaryFunction f)
 {
-  if (is_single_value()) {
-    apply_to_typed_value(f, data, meta_member);
-  } else if (is_array()) {
-    size_t stride = get_array_stride();
-    for (size_t i = 0; i < get_array_size(); i++) {
-      apply_to_typed_value(f, (byte *)data + i * stride, meta_member);
-    }
+  assert(get_container_type() == MemberContainerType::SingleValue);
+  if (is_submessage_type()) {
+    return with_message(this->meta_member.members_, data, f);
   } else {
-    assert(is_sequence());
-    auto size = get_sequence_size();
-    for (size_t i = 0; i < size; i++) {
-      apply_to_typed_value(f, meta_member.get_const_function(data, i), meta_member);
-    }
+    return with_typed_ptr(data, meta_member, [&](auto * x) { return f(*x); });
   }
+}
+
+template <typename T, typename Deref>
+struct CommonObjectSequence
+{
+  void * object;
+  Deref deref;
+
+  size_t (*size_function)(const void *);
+  const void * (*get_const_function)(const void *, size_t index);
+  void * (*get_function)(void *, size_t index);
+
+  size_t size() const { return size_function(object); }
+  T & get(size_t index) const { return deref(get_const_function(object, index)); }
+  T & get(size_t index) { return deref(get_function(object, index)); }
+};
+
+template <typename T, typename Deref>
+struct CObjectSequence {
+  bool (* resize_function)(void *, size_t size);
+
+  void resize(size_t size){
+    assert (resize_function(size));
+  }
+};
+
+template <typename T, typename Deref>
+struct CppObjectSequence {
+  void (* resize_function)(void *, size_t size);
+
+  void resize(size_t size){
+    resize_function(size);
+  }
+};
+
+template <>
+template <typename UnaryFunction, typename Result>
+Result MemberRef<RTI_Cpp::MetaMember>::with_sequence(UnaryFunction f)
+{
+  assert(!meta_member.size_function);
+  assert(false);
 }
 
 template <>
 template <typename UnaryFunction, typename Result>
-Result MemberRef<RTI_C>::with_sequence(UnaryFunction f)
+Result MemberRef<RTI_C::MetaMember>::with_sequence(UnaryFunction f)
 {
-  assert (is_sequence());
-  this->meta_member-
+  assert(!meta_member.size_function);
+  assert(!meta_member.get_function);
+  assert(!meta_member.get_const_function);
+
+  return with_type(meta_member, [&](auto t) {
+    using T = typename decltype(t)::type;
+    return f(*static_cast<RTI_C::Sequence<T> *>(data));
+  });
 }
 
 }  // namespace rmw_cyclonedds_cpp

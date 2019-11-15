@@ -81,12 +81,6 @@ protected:
     }
   }
 
-  void align_and_put(const void * data, size_t n_bytes)
-  {
-    align(n_bytes);
-    dst.put_bytes(data, n_bytes);
-  }
-
 public:
   CDRWriter() = delete;
   explicit CDRWriter(Accumulator & dst) : dst(dst) {}
@@ -133,16 +127,29 @@ protected:
   }
 
   template <typename MetaMessage>
-  void serialize(MessageRef<MetaMessage> message)
+  void serialize(const MessageRef<MetaMessage> & message)
   {
     for (size_t i = 0; i < message.size(); i++) {
       auto member = message.at(i);
-
-      if (member.is_sequence()) {
-        serialize_u32(member.get_sequence_size());
+      switch (member.get_container_type()) {
+        case MemberContainerType::SingleValue:
+          member.with_single_value([&](auto m) { serialize(m); });
+          break;
+        case MemberContainerType::Array:
+          member.with_array([&](auto m) {
+            for (size_t i = 0; i < m.size(); i++) {
+              serialize(m[i]);
+            }
+          });
+          break;
+        case MemberContainerType::Sequence:
+          member.with_sequence([&](auto m) {
+            serialize_u32(m.size());
+            for (size_t i = 0; i < m.size(); i++) {
+              serialize(m[i]);
+            }
+          });
       }
-
-      member.for_each_value([&](auto s) { serialize(s); });
     }
   }
 
@@ -151,7 +158,7 @@ protected:
     assert(s < UINT32_MAX);
     serialize(static_cast<uint32_t>(s));
   }
-};
+};  // namespace rmw_cyclonedds_cpp
 
 template <typename... Args>
 size_t get_serialized_size(Args &&... args)
