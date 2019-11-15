@@ -15,9 +15,8 @@
 
 #include <string.h>
 
+#include "Serialization.hpp"
 #include <regex>
-#include <rmw_cyclonedds_cpp/Serialization.hpp>
-#include <rmw_cyclonedds_cpp/TypeSupport2.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -172,18 +171,13 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
     if (kind != SDK_DATA) {
       /* ROS2 doesn't do keys, so SDK_KEY is trivial */
     } else if (!topic->is_request_header) {
-      rmw_cyclonedds_cpp::with_message(&topic->message_type_support, sample,[&](auto message){
-        rmw_cyclonedds_cpp::serialize(d->data, message);
-      });
+      rmw_cyclonedds_cpp::serialize(d->data, sample, topic->message_type_support);
     } else {
       /* inject the service invocation header data into the CDR stream --
        * I haven't checked how it is done in the official RMW implementations, so it is
        * probably incompatible. */
-      auto wrap = static_cast<const cdds_request_wrapper_t *>(sample);
-
-      rmw_cyclonedds_cpp::with_message(&topic->message_type_support, sample,[&](auto message){
-        serialize(d->data, wrap->header.guid, wrap->header.seq, message);
-      });
+      auto wrap = *static_cast<const cdds_request_wrapper_t *>(sample);
+      rmw_cyclonedds_cpp::serialize(d->data, wrap, topic->message_type_support);
     }
     /* FIXME: CDR padding in DDSI makes me do this to avoid reading beyond the bounds of the vector
       when copying data to network.  Should fix Cyclone to handle that more elegantly.  */

@@ -48,14 +48,7 @@ enum class ValueType : uint8_t {
 
 enum class MemberContainerType { Array, Sequence, SingleValue };
 
-template <typename UnaryFunction>
-constexpr auto apply_to_primitive_value(UnaryFunction fn, ValueType value_type,
-                                        void *data);
-
-struct RTI_C {
-  static auto get_typesupport_identifier() {
-    return rosidl_typesupport_introspection_c__identifier;
-  }
+namespace RTI_C {
   static constexpr auto &identifier =
       rosidl_typesupport_introspection_c__identifier;
 
@@ -124,23 +117,24 @@ struct RTI_C {
   };
 };
 
-struct RTI_Cpp {
+namespace RTI_Cpp {
   static constexpr auto &identifier =
       rosidl_typesupport_introspection_cpp::typesupport_identifier;
 
-  static auto get_typesupport_identifier() {
-    return rosidl_typesupport_introspection_cpp::typesupport_identifier;
-  }
   using MetaMessage = rosidl_typesupport_introspection_cpp::MessageMembers;
   using MetaMember = rosidl_typesupport_introspection_cpp::MessageMember;
   using MetaService = rosidl_typesupport_introspection_cpp::ServiceMembers;
 };
+
+template <typename UnaryFunction, typename Result = void>
+Result with_type(ValueType value_type, UnaryFunction f);
 
 template <typename UnaryFunction>
 auto with_typesupport(const rosidl_message_type_support_t *untyped_typesupport,
                       UnaryFunction f) {
   const rosidl_message_type_support_t *ts;
 
+  assert(untyped_typesupport);
   if ((ts = get_message_typesupport_handle(untyped_typesupport,
                                            RTI_C::identifier))) {
     return f(*static_cast<const RTI_C::MetaMessage *>(ts->data));
@@ -166,34 +160,10 @@ auto with_typesupport(const rosidl_service_type_support_t *untyped_typesupport,
   throw std::runtime_error("typesupport not recognized");
 }
 
-std::pair<rosidl_message_type_support_t, rosidl_message_type_support_t>
-get_svc_request_response_typesupports(const rosidl_service_type_support_t *svc);
-
 //////////////////
 template <typename MetaMessage> struct MessageRef;
 
 template <typename MetaMember> struct MemberRef;
-
-template <typename MessageMembers> struct MessageType {
-  MessageMembers mm;
-
-  size_t sizeof_value() const { return mm.size_of_; }
-  using value_type = void;
-  using reference_type = MessageRef<MessageMembers>;
-
-  template <typename UnaryFunction>
-  auto with_value(void *ptr_to_value, UnaryFunction f) {
-    return f(make_member_ref(mm, ptr_to_value));
-  };
-};
-
-template <typename UnaryFunction>
-auto with_typed_ptr(const void *value_data,
-                    const RTI_C::MetaMember &meta_member, UnaryFunction f);
-
-template <typename UnaryFunction>
-auto with_typed_ptr(const void *value_data,
-                    const RTI_Cpp::MetaMember &meta_member, UnaryFunction f);
 
 template <typename MetaMessage> struct MessageRef {
   using MetaMember = std::remove_pointer_t<decltype(MetaMessage::members_)>;
@@ -208,32 +178,6 @@ template <typename MetaMessage> struct MessageRef {
   size_t size() const { return meta_message.member_count_; }
 
   auto at(size_t index) const;
-};
-
-template <typename T> struct ArrayRef {
-  ArrayRef() = delete;
-
-  T *data;
-  size_t n;
-
-  T &operator[](size_t index) {
-    assert(index < size());
-    return data[index];
-  };
-
-  auto size() const { return n; }
-};
-
-template <typename MetaMessage> struct ArrayOfMessageRef {
-  ArrayOfMessageRef() = delete;
-
-  void *data;
-  size_t n;
-  const MetaMessage &meta_message;
-
-  MessageRef<MetaMessage> operator[](size_t index);
-
-  auto size() const { return n; }
 };
 
 template <typename MetaMember> struct MemberRef {
@@ -258,13 +202,13 @@ template <typename MetaMember> struct MemberRef {
   };
 
   template <typename UnaryFunction, typename Result = void>
-  Result with_sequence(UnaryFunction f);
+  Result with_single_value(UnaryFunction f);
 
   template <typename UnaryFunction, typename Result = void>
   Result with_array(UnaryFunction f);
 
   template <typename UnaryFunction, typename Result = void>
-  Result with_single_value(UnaryFunction f);
+  Result with_sequence(UnaryFunction f);
 
   bool is_submessage_type() {
     return ValueType(meta_member.type_id_) == ValueType ::MESSAGE;
@@ -276,48 +220,30 @@ template <typename MetaMember> struct MemberRef {
     assert(meta_member.members_);
     with_typesupport(meta_member.members_, f);
   }
+
+protected:
+  template <typename UnaryFunction, typename Result = void>
+  Result with_value_helper(UnaryFunction f);
 };
 
-// todo : extend these subclasses so we can gradually type members
-// e.g. MessageMember -> M : NativeValued<T>, ArrayMember
-template <typename T> struct NativeValueInfo {
-  using reference_type = T &;
-  constexpr size_t sizeof_value() const { return sizeof(T); }
-  reference_type cast_value(void *ptr) { return *static_cast<T *>(ptr); }
-};
-template <typename MetaMessage> struct MessageValueInfo {
-  MetaMessage value_members;
-  using reference_type = MessageRef<MetaMessage>;
-  size_t sizeof_value() const { return value_members.size_of_; }
-  reference_type cast_value(void *ptr) {
-    return make_message_ref(value_members, ptr);
-  }
-};
-template <typename ValueInfo,
-    typename MemberInfo>
-    struct ArrayMember {
-  ValueInfo value_info;
-  MemberInfo member_info;
-  void *data;
-  size_t size() const { return member_info.array_size;}
-  typename ValueInfo::reference_type operator[](size_t index) {
-    return value_info.cast_value((byte *)data +
-                                 value_info.sizeof_value() * index);
-  }
-};
+template <typename MetaMessage>
+auto make_message_ref(const MetaMessage &meta, void *data) {
+  return MessageRef<MetaMessage>{meta, data};
+}
 
 template <typename MetaMessage>
 auto make_message_ref(const MetaMessage &meta, const void *data) {
   return MessageRef<MetaMessage>{meta, data};
 }
+
 template <typename MetaMember>
 auto make_member_ref(const MetaMember &meta, void *data) {
-  return std::move(MemberRef<MetaMember>{meta, data});
+  return MemberRef<MetaMember>{meta, data};
 }
 
 template <typename MetaMember>
 auto make_member_ref(const MetaMember &meta, const void *data) {
-  return std::move(MemberRef<MetaMember>{meta, data});
+  return MemberRef<MetaMember>{meta, data};
 }
 
 template <typename UnaryFunction>

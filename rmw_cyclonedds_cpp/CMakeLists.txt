@@ -16,8 +16,6 @@ cmake_minimum_required(VERSION 3.5)
 
 project(rmw_cyclonedds_cpp)
 
-link_directories(/usr/local/lib)
-
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
@@ -63,7 +61,8 @@ add_library(rmw_cyclonedds_cpp
   src/u16string.cpp
   src/exception.cpp
   src/deserialization_exception.cpp
-  src/TypeSupport2.cpp)
+  src/TypeSupport2.cpp
+  src/Serialization.cpp)
 
 target_link_libraries(rmw_cyclonedds_cpp CycloneDDS::ddsc)
 

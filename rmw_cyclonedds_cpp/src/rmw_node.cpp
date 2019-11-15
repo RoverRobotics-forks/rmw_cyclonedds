@@ -39,10 +39,10 @@
 #include "rmw/rmw.h"
 #include "rmw/sanity_checks.h"
 
+#include "Serialization.hpp"
 #include "rmw/impl/cpp/macros.hpp"
-#include "rmw_cyclonedds_cpp/Serialization.hpp"
 
-#include "rmw_cyclonedds_cpp/TypeSupport2.hpp"
+#include "TypeSupport2.hpp"
 
 #include "rmw_cyclonedds_cpp/MessageTypeSupport.hpp"
 #include "rmw_cyclonedds_cpp/ServiceTypeSupport.hpp"
@@ -855,16 +855,14 @@ extern "C" rmw_ret_t rmw_serialize(
 
   std::vector<unsigned char> data;
   try {
-   return rmw_cyclonedds_cpp::with_message(type_support, ros_message, [&](auto message) {
-      auto size = rmw_cyclonedds_cpp::get_serialized_size(message);
-      if ((ret = rmw_serialized_message_resize(serialized_message, size)) != RMW_RET_OK) {
-        RMW_SET_ERROR_MSG("rmw_serialize: failed to allocate space for message");
-        return ret;
-      }
-      rmw_cyclonedds_cpp::serialize(serialized_message->buffer,size,message);
-      serialized_message->buffer_length = size;
-      return RMW_RET_OK;
-    });
+    auto size = rmw_cyclonedds_cpp::get_serialized_size(ros_message, *type_support);
+    if ((ret = rmw_serialized_message_resize(serialized_message, size) != RMW_RET_OK)) {
+      RMW_SET_ERROR_MSG("rmw_serialize: failed to allocate space for message");
+      return ret;
+    }
+    rmw_cyclonedds_cpp::serialize(serialized_message->buffer, size, ros_message, *type_support);
+    serialized_message->buffer_length = size;
+    return RMW_RET_OK;
   }
   catch (std::exception &e){
     RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("rmw_serialize: failed to serialize: %s", e.what());
