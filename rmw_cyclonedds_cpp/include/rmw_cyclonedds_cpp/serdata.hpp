@@ -30,7 +30,6 @@ struct CddsTypeSupport
 
 struct sertopic_rmw : ddsi_sertopic
 {
-  rosidl_message_type_support_t message_type_support;
   CddsTypeSupport type_support;
   bool is_request_header;
 #if !DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
@@ -38,6 +37,7 @@ struct sertopic_rmw : ddsi_sertopic
   std::string cpp_type_name;
   std::string cpp_name_type_name;
 #endif
+  rosidl_message_type_support_t message_type_support;
 };
 
 struct serdata_rmw : ddsi_serdata
