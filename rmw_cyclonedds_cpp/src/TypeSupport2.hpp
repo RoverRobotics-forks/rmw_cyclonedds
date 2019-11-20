@@ -87,34 +87,7 @@ struct WString : rosidl_generator_c__U16String
   using traits_type = std::char_traits<char16_t>;
 
   auto size() const {return rosidl_generator_c__U16String::size;}
-
-  struct iterator
-  {
-    const WString & str;
-    size_t position;
-    iterator & operator++()
-    {
-      position++;
-      return *this;
-    }
-
-    char16_t operator*()
-    {
-      if (str.size() <= position) {
-        throw std::out_of_range("string index out of range");
-      }
-      return static_cast<char16_t>(str.data[position]);
-    }
-
-    bool operator==(const iterator & other)
-    {
-      assert(&str == &other.str);
-      return position == other.position;
-    }
-    bool operator!=(const iterator & other) {return !(*this == other);}
-  };
-
-  auto begin() const {return iterator{*this, 0};}
+  auto begin() const {return static_cast<char16_t *>(data);}
   auto end() const {return iterator{*this, size()};}
 };
 

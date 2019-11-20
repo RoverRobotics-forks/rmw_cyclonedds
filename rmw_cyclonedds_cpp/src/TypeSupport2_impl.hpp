@@ -75,6 +75,9 @@ struct NativeValueHelper
   {
     return *static_cast<const T *>(ptr);
   }
+  static constexpr bool is_primitive(){
+    return !std::is_compound<T>::value;
+  }
 };
 
 template<typename MetaMessage>
@@ -93,6 +96,9 @@ struct MessageValueHelper
   std::add_const_t<reference_type> cast_value(const void * ptr) const
   {
     return make_message_ref(value_members, ptr);
+  }
+  static constexpr bool is_primitive(){
+    return false;
   }
 };
 

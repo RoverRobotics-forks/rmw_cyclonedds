@@ -28,18 +28,18 @@ std::pair<rosidl_message_type_support_t, rosidl_message_type_support_t>
 get_svc_request_response_typesupports(const rosidl_service_type_support_t & svc)
 {
   return with_typesupport(svc, [&](auto svc_ts) {
-             return std::make_pair(
-               rosidl_message_type_support_t{
+    return std::make_pair(
+      rosidl_message_type_support_t{
         svc.typesupport_identifier,
         svc_ts.request_members_,
         get_message_typesupport_handle_function,
       },
-               rosidl_message_type_support_t{
+      rosidl_message_type_support_t{
         svc.typesupport_identifier,
         svc_ts.response_members_,
         get_message_typesupport_handle_function,
       });
-           });
+  });
 }
 
 struct SizeAccumulator
@@ -52,7 +52,18 @@ struct SizeAccumulator
   {
   }
 
-  auto size() const {return _size;}
+  auto size() const { return _size; }
+
+  template <typename Iter>
+  void put(Iter start, Iter end)
+  {
+    size_t n = (end - start) * sizeof(decltype(*start));
+
+    if (_size + n > _capacity) {
+      throw std::length_error("Data exceeds buffer size");
+    }
+    _size += n;
+  }
 
   void put_bytes(const void * s, size_t n)
   {
@@ -87,7 +98,7 @@ struct DataAccumulator
     assert(size <= capacity);
   }
 
-  auto size() const {return _size;}
+  auto size() const { return _size; }
 
   void put_bytes(const void * s, size_t n)
   {
@@ -108,13 +119,12 @@ struct DataAccumulator
   }
 };
 
-enum class EncodingVersion
-{
+enum class EncodingVersion {
   CDR_Legacy,
   CDR1,
 };
 
-template<typename Accumulator>
+template <typename Accumulator>
 class CDRWriter
 {
 protected:
@@ -123,7 +133,12 @@ protected:
   const EncodingVersion eversion;
   const size_t max_align;
 
-  void put_bytes(const void * bytes, size_t size) {dst.put_bytes(bytes, size);}
+  template <typename T>
+  void put(T & start, T & end)
+  {
+    dst.put(start, end);
+  }
+  void put_bytes(const void * bytes, size_t size) { dst.put_bytes(bytes, size); }
 
   void align(size_t n_bytes)
   {
@@ -135,9 +150,9 @@ protected:
 public:
   CDRWriter() = delete;
   explicit CDRWriter(Accumulator & dst)
-  : dst(dst),
-    eversion{EncodingVersion::CDR_Legacy},
-    max_align{8} {}
+  : dst(dst), eversion{EncodingVersion::CDR_Legacy}, max_align{8}
+  {
+  }
 
   void serialize_top_level(
     const cdds_request_wrapper_t & request, const rosidl_message_type_support_t & support)
@@ -145,19 +160,19 @@ public:
     put_rtps_header();
     serialize(request.header.guid);
     serialize(request.header.seq);
-    with_typesupport(support, [&](auto t) {serialize(make_message_ref(t, request.data));});
+    with_typesupport(support, [&](auto t) { serialize(make_message_ref(t, request.data)); });
   }
 
   void serialize_top_level(const void * data, const rosidl_message_type_support_t & support)
   {
     put_rtps_header();
     with_typesupport(support, [&](auto t) {
-        if (t.member_count_ == 0 && eversion == EncodingVersion::CDR_Legacy) {
-          serialize('\0');
-        } else {
-          serialize(make_message_ref(t, data));
-        }
-      });
+      if (t.member_count_ == 0 && eversion == EncodingVersion::CDR_Legacy) {
+        serialize('\0');
+      } else {
+        serialize(make_message_ref(t, data));
+      }
+    });
   }
 
 protected:
@@ -173,16 +188,15 @@ protected:
         eversion_byte = '\1';
         break;
     }
-    std::array<char, 4> rtps_header{
-      eversion_byte,
-      // encoding format = PLAIN_CDR
-      (native_endian() == endian::little) ? '\1' : '\0',
-      // options
-      '\0', '\0'};
+    std::array<char, 4> rtps_header{eversion_byte,
+                                    // encoding format = PLAIN_CDR
+                                    (native_endian() == endian::little) ? '\1' : '\0',
+                                    // options
+                                    '\0', '\0'};
     put_bytes(rtps_header.data(), rtps_header.size());
   }
 
-  template<
+  template <
     typename T,
     std::enable_if_t<std::is_integral<T>::value && !std::is_same<T, bool>::value, int> = 0>
   void serialize(T data)
@@ -191,7 +205,7 @@ protected:
     put_bytes(static_cast<const void *>(&data), sizeof(data));
   }
 
-  template<typename T, std::enable_if_t<std::is_floating_point<T>::value, int> = 0>
+  template <typename T, std::enable_if_t<std::is_floating_point<T>::value, int> = 0>
   void serialize(T data)
   {
     static_assert(std::numeric_limits<T>::is_iec559, "Non-standard float");
@@ -200,25 +214,23 @@ protected:
     put_bytes(static_cast<const void *>(&data), sizeof(data));
   }
 
-  template<
+  template <
     typename T,
     std::enable_if_t<
       std::is_same<T, bool>::value || std::is_same<T, std::vector<bool>::reference>::value ||
-      std::is_same<T, std::vector<bool>::const_reference>::value,
+        std::is_same<T, std::vector<bool>::const_reference>::value,
       int> = 0>
   void serialize(T value)
   {
     serialize(value ? '\1' : '\0');
   }
 
-  template<typename T, typename char_type = typename T::traits_type::char_type>
+  template <typename T, typename char_type = typename T::traits_type::char_type>
   void serialize(const T & value)
   {
     if (sizeof(char_type) == 1) {
       serialize_u32(value.size() + 1);
-      for (char_type s : value) {
-        serialize(s);
-      }
+      put_bytes(std::begin(value), (std::end(value) - std::begin(value)));
       serialize('\0');
     } else {
       if (eversion == EncodingVersion::CDR_Legacy) {
@@ -228,36 +240,41 @@ protected:
         }
       } else {
         serialize_u32(value.size() * sizeof(char_type));
-        for (char_type s : value) {
-          serialize(s);
-        }
+        put_bytes(std::begin(value), (std::end(value) - std::begin(value))* sizeof(char_type));
       }
     }
   }
 
-  template<typename MetaMessage>
+  template <typename MetaMessage>
   void serialize(const MessageRef<MetaMessage> & message)
   {
     for (size_t i = 0; i < message.size(); i++) {
       auto member = message.at(i);
       switch (member.get_container_type()) {
         case MemberContainerType::SingleValue:
-          member.with_single_value([&](auto m) {serialize(m.get());});
+          member.with_single_value([&](auto m) { serialize(m.get()); });
           break;
         case MemberContainerType::Array:
           member.with_array([&](auto m) {
+            if (m.value_type ==  ValueType::STRING || m.value_type == ValueType::WSTRING ||m.value_type == ValueType::BOOLEAN || m.value_type == ValueType::MESSAGE){
               for (size_t j = 0; j < m.size(); j++) {
                 serialize(m[j]);
               }
-            });
+            } else {
+              put_bytes(std::begin(m),(std::end(m)-std::begin(m))*sizeof(*std::begin(m)));
+            }
+          });
           break;
         case MemberContainerType::Sequence:
           member.with_sequence([&](auto m) {
-              serialize_u32(m.size());
+            serialize_u32(m.size());
+            if (m.value_type ==  ValueType::STRING || m.value_type == ValueType::WSTRING ||m.value_type == ValueType::BOOLEAN || m.value_type == ValueType::MESSAGE){
               for (size_t j = 0; j < m.size(); j++) {
-                serialize(m[j]);
-              }
-            });
+              serialize(m[j]);
+            }}else {
+              put_bytes(std::begin(m),(std::end(m)-std::begin(m))*sizeof(*std::begin(m)));
+            }
+          });
       }
     }
   }
