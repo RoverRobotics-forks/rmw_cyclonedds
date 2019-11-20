@@ -170,7 +170,7 @@ struct ArrayMemberRef : MemberRef<MetaMember>
   ValueHelper value_helper;
   auto operator[](size_t index) const
   {
-    return value_helper.cast_value(this->data + ByteOffset(value_helper.sizeof_value() * index));
+    return value_helper.cast_value(byte_offset(this->data, value_helper.sizeof_value() * index));
   }
   size_t size() const {return this->meta_member.array_size_;}
 };

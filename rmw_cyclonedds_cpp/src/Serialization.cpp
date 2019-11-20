@@ -95,7 +95,7 @@ struct DataAccumulator
       throw std::length_error("Data exceeds buffer size");
     }
 
-    memcpy(_data + ByteOffset(_size), s, n);
+    memcpy(byte_offset(_data, _size), s, n);
     _size += n;
   }
 

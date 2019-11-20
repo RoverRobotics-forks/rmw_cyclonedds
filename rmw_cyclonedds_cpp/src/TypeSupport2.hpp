@@ -309,7 +309,7 @@ auto MessageRef<MetaMessage>::at(size_t index) const
     throw std::out_of_range("index out of range");
   }
   auto & member = meta_message.members_[index];
-  return make_member_ref(member, data + ByteOffset(member.offset_));
+  return make_member_ref(member, byte_offset(data, member.offset_));
 }
 
 }  // namespace rmw_cyclonedds_cpp
