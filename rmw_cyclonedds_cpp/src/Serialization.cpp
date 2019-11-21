@@ -140,11 +140,39 @@ protected:
   }
   void put_bytes(const void * bytes, size_t size) { dst.put_bytes(bytes, size); }
 
+  template <typename Iter>
+  void put_bytes(Iter begin, Iter end) {
+    for(auto t=begin; t!=end; ++t){
+     auto  c = *t;
+    put_bytes(&c,sizeof(c));
+  }
+  }
+
   void align(size_t n_bytes)
   {
+    if (n_bytes==1)
+      return;
     assert(n_bytes == 1 || n_bytes == 2 || n_bytes == 4 || n_bytes == 8);
     size_t current_align = (eversion == EncodingVersion::CDR_Legacy) ? dst.size() - 4 : dst.size();
     dst.pad_bytes((-current_align) % max_align % n_bytes);
+  }
+
+  template <
+    typename T,
+    std::enable_if_t<std::is_arithmetic<T>::value, int> = 0>
+  void serialize_noalign(T data)
+  {
+    put_bytes(static_cast<const void *>(&data), sizeof(data));
+  }
+
+  template <typename T,
+    std::enable_if_t<std::is_arithmetic<T>::value, int> = 0>
+  void serialize(T data)
+  {
+    if (sizeof(T) > 1) {
+      align(sizeof(data));
+    }
+    serialize_noalign(data);
   }
 
 public:
@@ -196,28 +224,13 @@ protected:
     put_bytes(rtps_header.data(), rtps_header.size());
   }
 
-  template <
-    typename T,
-    std::enable_if_t<std::is_integral<T>::value && !std::is_same<T, bool>::value, int> = 0>
-  void serialize(T data)
-  {
-    align(sizeof(data));
-    put_bytes(static_cast<const void *>(&data), sizeof(data));
-  }
-
-  template <typename T, std::enable_if_t<std::is_floating_point<T>::value, int> = 0>
-  void serialize(T data)
-  {
-    static_assert(std::numeric_limits<T>::is_iec559, "Non-standard float");
-
-    align(sizeof(data));
-    put_bytes(static_cast<const void *>(&data), sizeof(data));
-  }
+  static_assert(std::numeric_limits<float>::is_iec559, "Non-standard float");
+  static_assert(std::numeric_limits<double>::is_iec559, "Non-standard float");
 
   template <
     typename T,
     std::enable_if_t<
-      std::is_same<T, bool>::value || std::is_same<T, std::vector<bool>::reference>::value ||
+        std::is_same<T, std::vector<bool>::reference>::value ||
         std::is_same<T, std::vector<bool>::const_reference>::value,
       int> = 0>
   void serialize(T value)
@@ -230,7 +243,7 @@ protected:
   {
     if (sizeof(char_type) == 1) {
       serialize_u32(value.size() + 1);
-      put_bytes(std::begin(value), (std::end(value) - std::begin(value)));
+      put_bytes(std::begin(value), std::end(value));
       serialize('\0');
     } else {
       if (eversion == EncodingVersion::CDR_Legacy) {
@@ -240,7 +253,7 @@ protected:
         }
       } else {
         serialize_u32(value.size() * sizeof(char_type));
-        put_bytes(std::begin(value), (std::end(value) - std::begin(value))* sizeof(char_type));
+        put_bytes(std::begin(value), std::end(value));
       }
     }
   }
@@ -256,14 +269,19 @@ protected:
           break;
         case MemberContainerType::Array:
           member.with_array([&](auto m) {
-            if (m.value_type ==  ValueType::STRING || m.value_type == ValueType::WSTRING ||m.value_type == ValueType::BOOLEAN || m.value_type == ValueType::MESSAGE){
-              for (size_t j = 0; j < m.size(); j++) {
+            if (std::is_arithmetic<std::remove_reference_t<decltype(m[0])>>::value) {
+              put_bytes(std::begin(m), std::end(m));
+            }
+           else for (size_t j = 0; j < m.size(); j++) {
                 serialize(m[j]);
               }
             } else {
-              put_bytes(std::begin(m),(std::end(m)-std::begin(m))*sizeof(*std::begin(m)));
+              align(sizeof(m[0]));
+//              put_bytes(m.data, m.size() * m.);
+//
+//              m.data
+//              put_bytes(std::begin(m),(std::end(m)-std::begin(m))*sizeof(*std::begin(m)));
             }
-          });
           break;
         case MemberContainerType::Sequence:
           member.with_sequence([&](auto m) {
