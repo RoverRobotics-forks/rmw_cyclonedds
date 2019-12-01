@@ -42,6 +42,7 @@ public:
   size_t sizeof_struct() const override {return impl.size_of_;}
   size_t n_members() const override {return impl.member_count_;}
   const Member * get_member(size_t index) const override {return &m_members.at(index);}
+  void init(void * obj)const override {impl.init_function(obj, ROSIDL_RUNTIME_C_MSG_INIT_ZERO);}
 };
 
 class ROSIDLCPP_StructValueType : public StructValueType
@@ -64,6 +65,10 @@ public:
   size_t sizeof_struct() const override {return impl.size_of_;}
   size_t n_members() const override {return impl.member_count_;}
   const Member * get_member(size_t index) const final {return &m_members.at(index);}
+  void init(void * obj)const override
+  {
+    impl.init_function(obj, rosidl_generator_cpp::MessageInitialization::ZERO);
+  }
 };
 
 const StructValueType * from_rosidl(const rosidl_message_type_support_t * mts)
@@ -154,11 +159,11 @@ ROSIDLC_StructValueType::ROSIDLC_StructValueType(decltype(impl) impl)
       member_value_type = make_value_type<ArrayValueType>(element_value_type,
           member_impl.array_size_);
     } else if (member_impl.size_function) {
-      member_value_type = make_value_type<CallbackSpanSequenceValueType>(element_value_type,
-          member_impl.size_function,
-          member_impl.get_const_function);
+      member_value_type = make_value_type<ROSIDLC_CallbackSpanSequenceValueType>(element_value_type,
+          member_impl);
     } else {
-      member_value_type = make_value_type<ROSIDLC_SpanSequenceValueType>(element_value_type);
+      assert(false);
+      // member_value_type = make_value_type<ROSIDLC_SpanSequenceValueType>(element_value_type);
     }
     auto a_member = Member{
       member_impl.name_,
@@ -214,8 +219,8 @@ ROSIDLCPP_StructValueType::ROSIDLCPP_StructValueType(decltype(impl) impl)
     } else if (ROSIDL_TypeKind(member_impl.type_id_) == ROSIDL_TypeKind::BOOLEAN) {
       a_member.value_type = make_value_type<BoolVectorValueType>();
     } else {
-      a_member.value_type = make_value_type<CallbackSpanSequenceValueType>(
-        element_value_type, member_impl.size_function, member_impl.get_const_function);
+      a_member.value_type = make_value_type<ROSIDLCPP_CallbackSpanSequenceValueType>(
+        element_value_type, member_impl);
     }
     m_members.push_back(a_member);
   }

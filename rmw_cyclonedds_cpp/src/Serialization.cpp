@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "Serialization.hpp"
-
+#include "cdr.hpp"
 #include <algorithm>
 #include <limits>
 #include <utility>
@@ -96,12 +96,6 @@ struct DataCursor : public CDRCursor
   }
   bool ignores_data() const final {return false;}
   void rebase(ptrdiff_t relative_origin) final {origin = byte_offset(origin, relative_origin);}
-};
-
-enum class EncodingVersion
-{
-  CDR_Legacy,
-  CDR1,
 };
 
 class CDRWriter

@@ -262,6 +262,7 @@ public:
   virtual size_t n_members() const = 0;
   virtual const Member * get_member(size_t) const = 0;
   EValueType e_value_type() const final {return EValueType::StructValueType;}
+  virtual void init(void * obj)const = 0;
 };
 
 class ArrayValueType : public AnyValueType
@@ -290,6 +291,7 @@ public:
   virtual size_t sequence_size(const void * ptr_to_sequence) const = 0;
   virtual const void * sequence_contents(const void * ptr_to_sequence) const = 0;
   EValueType e_value_type() const final {return EValueType::SpanSequenceValueType;}
+  virtual void resize(void *, size_t) const = 0;
 };
 
 class CallbackSpanSequenceValueType : public SpanSequenceValueType
@@ -324,6 +326,46 @@ public:
   }
 };
 
+class ROSIDLC_CallbackSpanSequenceValueType : public CallbackSpanSequenceValueType
+{
+protected:
+  decltype(MetaMember<TypeGenerator::ROSIDL_C>::resize_function) m_resize_function;
+
+public:
+  ROSIDLC_CallbackSpanSequenceValueType(
+    const AnyValueType * element_value_type,
+    const MetaMember<TypeGenerator::ROSIDL_C> & m)
+  : CallbackSpanSequenceValueType(element_value_type, m.size_function, m.get_const_function),
+    m_resize_function(m.resize_function)
+  {}
+
+  void resize(void * obj, size_t count) const override
+  {
+    if (!m_resize_function(obj, count)) {
+      throw std::runtime_error("could not resize");
+    }
+  }
+};
+
+class ROSIDLCPP_CallbackSpanSequenceValueType : public CallbackSpanSequenceValueType
+{
+protected:
+  decltype(MetaMember<TypeGenerator::ROSIDL_Cpp>::resize_function) m_resize_function;
+
+public:
+  ROSIDLCPP_CallbackSpanSequenceValueType(
+    const AnyValueType * element_value_type,
+    const MetaMember<TypeGenerator::ROSIDL_Cpp> & m)
+  : CallbackSpanSequenceValueType(element_value_type, m.size_function, m.get_const_function),
+    m_resize_function(m.resize_function)
+  {}
+
+  void resize(void * obj, size_t count) const override
+  {
+    m_resize_function(obj, count);
+  }
+};
+
 class ROSIDLC_SpanSequenceValueType : public SpanSequenceValueType
 {
 protected:
@@ -341,7 +383,7 @@ protected:
   }
 
 public:
-  ROSIDLC_SpanSequenceValueType(const AnyValueType * element_value_type)
+  explicit ROSIDLC_SpanSequenceValueType(const AnyValueType * element_value_type)
   : m_element_value_type(element_value_type)
   {
   }
@@ -411,7 +453,7 @@ struct PrimitiveValueType : public AnyValueType
                 std::to_string(std::underlying_type_t<ROSIDL_TypeKind>(m_type_kind)));
     }
   }
-  virtual EValueType e_value_type() const {return EValueType::PrimitiveValueType;}
+  EValueType e_value_type() const override {return EValueType::PrimitiveValueType;}
 };
 
 class BoolVectorValueType : public AnyValueType
@@ -420,6 +462,10 @@ protected:
   const std::vector<bool> * get_value(const void * ptr_to_sequence) const
   {
     return static_cast<const std::vector<bool> *>(ptr_to_sequence);
+  }
+  std::vector<bool> * get_value(void * ptr_to_sequence) const
+  {
+    return static_cast<std::vector<bool> *>(ptr_to_sequence);
   }
 
   static std::unique_ptr<PrimitiveValueType> s_element_value_type;
@@ -445,6 +491,7 @@ public:
   }
   size_t size(const void * ptr_to_sequence) const {return get_value(ptr_to_sequence)->size();}
   EValueType e_value_type() const final {return EValueType::BoolVectorValueType;}
+  virtual void resize(void * obj, size_t count) const final {return get_value(obj)->resize(count);}
 };
 
 class ROSIDLC_StructValueType;
@@ -457,6 +504,7 @@ public:
   virtual TypedSpan<char_traits::char_type> data(void *) const = 0;
   virtual TypedSpan<const char_traits::char_type> data(const void *) const = 0;
   EValueType e_value_type() const final {return EValueType::U8StringValueType;}
+  virtual void assign(void * obj, const char_traits::char_type * s, size_t count) const = 0;
 };
 
 class U16StringValueType : public AnyValueType
@@ -467,6 +515,7 @@ public:
   virtual TypedSpan<char_traits::char_type> data(void *) const = 0;
   virtual TypedSpan<const char_traits::char_type> data(const void *) const = 0;
   EValueType e_value_type() const final {return EValueType::U16StringValueType;}
+  virtual void assign(void * obj, const char_traits::char_type * s, size_t count) const = 0;
 };
 
 struct ROSIDLC_StringValueType : public U8StringValueType
@@ -485,6 +534,10 @@ public:
     return {str->data, str->size};
   }
   size_t sizeof_type() const override {return sizeof(type);}
+  void assign(void * obj, const char_traits::char_type * s, size_t count) const override
+  {
+    rosidl_generator_c__String__assignn(static_cast<type *>(obj), s, count);
+  }
 };
 
 class ROSIDLC_WStringValueType : public U16StringValueType
@@ -503,6 +556,11 @@ public:
     return {reinterpret_cast<char_traits::char_type *>(str->data), str->size};
   }
   size_t sizeof_type() const override {return sizeof(type);}
+  void assign(void * obj, const char_traits::char_type * s, size_t count) const override
+  {
+    rosidl_generator_c__U16String__assignn(static_cast<type *>(obj),
+      reinterpret_cast<const uint16_t *>(s), count);
+  }
 };
 
 class ROSIDLCPP_StringValueType : public U8StringValueType
@@ -521,6 +579,10 @@ public:
     return {str->data(), str->size()};
   }
   size_t sizeof_type() const override {return sizeof(type);}
+  void assign(void * obj, const char_traits::char_type * s, size_t count) const override
+  {
+    static_cast<type *>(obj)->assign(s, count);
+  }
 };
 
 class ROSIDLCPP_U16StringValueType : public U16StringValueType
@@ -539,6 +601,10 @@ public:
     return {str->data(), str->size()};
   }
   size_t sizeof_type() const override {return sizeof(type);}
+  void assign(void * obj, const char_traits::char_type * s, size_t count) const override
+  {
+    static_cast<type *>(obj)->assign(s, count);
+  }
 };
 
 template<typename UnaryFunction>

@@ -22,6 +22,42 @@
 
 namespace rmw_cyclonedds_cpp
 {
+
+struct CDRReadCursor
+{
+  CDRReadCursor() = default;
+  ~CDRReadCursor() = default;
+
+  // don't want to accidentally copy
+  explicit CDRReadCursor(CDRReadCursor const &) = delete;
+  void operator=(CDRReadCursor const & x) = delete;
+
+  // virtual functions to be implemented
+  // get the cursor's current offset.
+  virtual size_t offset() const = 0;
+  // advance the cursor.
+  virtual void advance(size_t n_bytes) = 0;
+  // Copy bytes to the current cursor location (if needed) and advance the cursor
+  virtual void get_bytes(const void * data, size_t size) = 0;
+  virtual bool ignores_data() const = 0;
+  // Move the logical origin this many places
+  virtual void rebase(ptrdiff_t relative_origin) = 0;
+
+  void align(size_t n_bytes)
+  {
+    assert(n_bytes > 0);
+    size_t start_offset = offset();
+    if (n_bytes == 1 || start_offset % n_bytes == 0) {
+      return;
+    }
+    advance((-start_offset) % n_bytes);
+    assert(offset() - start_offset < n_bytes);
+    assert(offset() % n_bytes == 0);
+  }
+  ptrdiff_t operator-(const CDRReadCursor & other) const {return offset() - other.offset();}
+};
+
+
 std::pair<rosidl_message_type_support_t, rosidl_message_type_support_t>
 get_svc_request_response_typesupports(const rosidl_service_type_support_t & svc);
 
