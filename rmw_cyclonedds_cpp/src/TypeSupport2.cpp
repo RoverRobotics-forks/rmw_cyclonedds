@@ -162,8 +162,7 @@ ROSIDLC_StructValueType::ROSIDLC_StructValueType(decltype(impl) impl)
       member_value_type = make_value_type<ROSIDLC_CallbackSpanSequenceValueType>(element_value_type,
           member_impl);
     } else {
-      assert(false);
-      // member_value_type = make_value_type<ROSIDLC_SpanSequenceValueType>(element_value_type);
+      member_value_type = make_value_type<ROSIDLC_SpanSequenceValueType>(element_value_type);
     }
     auto a_member = Member{
       member_impl.name_,

@@ -13,9 +13,12 @@
 // limitations under the License.
 #pragma once
 
+#include <rcl/allocator.h>
+
 #include <cassert>
 #include <regex>
 #include <string>
+#include <type_traits>
 
 #include "bytewise.hpp"
 #include "rosidl_generator_c/string_functions.h"
@@ -30,6 +33,18 @@
 
 namespace rmw_cyclonedds_cpp
 {
+template<class T>
+struct type_identity
+{
+  using type = T;
+};
+
+template<typename T>
+constexpr std::allocator<T> get_allocator(type_identity<T> && = std::declval<type_identity<T>>())
+{
+  return {};
+}
+
 enum class TypeGenerator
 {
   ROSIDL_C,
@@ -112,6 +127,92 @@ auto make_typed_span(const NativeType * m_data, size_t size)
 {
   return TypedSpan<NativeType>{m_data, size};
 }
+
+template<typename T>
+class Casts
+{
+public:
+  using type = T;
+
+  static type * do_static_cast(void * ptr) {return static_cast<type *>(ptr);}
+  static const type * do_static_cast(const void * ptr) {return static_cast<const type *>(ptr);}
+
+  static type * do_dynamic_cast(void * ptr) {return dynamic_cast<type *>(ptr);}
+  static const type * do_dynamic_cast(const void * ptr) {return dynamic_cast<const type *>(ptr);}
+};
+
+template<typename T>
+Casts<T> casts(type_identity<T>)
+{
+  return {};
+}
+
+enum class EValueType
+{
+  // the logical value type
+  PrimitiveValueType,
+  U8StringValueType,
+  U16StringValueType,
+  StructValueType,
+  ArrayValueType,
+  SpanSequenceValueType,
+  BoolVectorValueType,
+};
+
+struct AnyValueType
+{
+  // represents not just the IDL value but also its physical representation
+  virtual ~AnyValueType() = default;
+
+  // how many bytes this value type takes up
+  virtual size_t sizeof_type() const = 0;
+
+  // represents the logical value type and supports the 'apply' function
+  virtual EValueType e_value_type() const = 0;
+
+  // faster alternative to dynamic cast
+  template<typename UnaryFunction>
+  auto apply(UnaryFunction f) const;
+
+  template<typename UnaryFunction>
+  auto apply(UnaryFunction f);
+
+  template<typename UnaryFunction>
+  auto apply_to_concrete_type(UnaryFunction f) const
+  {
+    throw std::logic_error("this should be implemented in a subclass");
+  }
+};
+
+struct PhysicalValueType
+{
+  virtual void * allocate(size_t n) const = 0;
+  virtual void deallocate(void * ptr, size_t n) const = 0;
+  virtual void ctor(void * ptr) const = 0;
+  virtual void dtor(void * ptr) const = 0;
+};
+
+template<typename T>
+struct ConcreteValueType : public PhysicalValueType
+{
+  using concrete_type = T;
+
+  T * cast_ptr(void * p) const {return static_cast<T *>(p);}
+  const T * cast_ptr(const void * p) const {return static_cast<const T *>(p);}
+
+  void * allocate(size_t n) const override {return std::allocator<concrete_type>{}.allocate(n);}
+
+  void deallocate(void * ptr, size_t n) const final {return deallocate(cast_ptr(ptr), n);}
+  void ctor(void * ptr) const final {ctor(static_cast<concrete_type *>(ptr));}
+  void dtor(void * ptr) const final {dtor(static_cast<concrete_type *>(ptr));}
+
+  virtual void ctor(concrete_type * ptr) const {new (ptr) T();}
+  virtual void dtor(concrete_type * ptr) const {ptr->~T();}
+  virtual void deallocate(concrete_type * ptr, size_t n) const
+  {
+    return std::allocator<concrete_type>{}.deallocate(ptr, n);
+  }
+};
 
 template<>
 struct TypeGeneratorInfo<TypeGenerator::ROSIDL_C>
@@ -209,37 +310,6 @@ enum class ROSIDL_TypeKind : uint8_t
 class StructValueType;
 const StructValueType * from_rosidl(const rosidl_message_type_support_t * mts);
 
-enum class EValueType
-{
-  // the logical value type
-  PrimitiveValueType,
-  U8StringValueType,
-  U16StringValueType,
-  StructValueType,
-  ArrayValueType,
-  SpanSequenceValueType,
-  BoolVectorValueType,
-};
-
-struct AnyValueType
-{
-  // represents not just the IDL value but also its physical representation
-  virtual ~AnyValueType() = default;
-
-  // how many bytes this value type takes up
-  virtual size_t sizeof_type() const = 0;
-
-  // represents the logical value type and supports the 'apply' function
-  virtual EValueType e_value_type() const = 0;
-
-  // faster alternative to dynamic cast
-  template<typename UnaryFunction>
-  auto apply(UnaryFunction f) const;
-
-  template<typename UnaryFunction>
-  auto apply(UnaryFunction f);
-};
-
 struct Member
 {
   const char * name;
@@ -262,10 +332,10 @@ public:
   virtual size_t n_members() const = 0;
   virtual const Member * get_member(size_t) const = 0;
   EValueType e_value_type() const final {return EValueType::StructValueType;}
-  virtual void init(void * obj)const = 0;
+  virtual void init(void * obj) const = 0;
 };
 
-class ArrayValueType : public AnyValueType
+class ArrayValueType : public AnyValueType, public PhysicalValueType
 {
 protected:
   const AnyValueType * m_element_value_type;
@@ -281,6 +351,31 @@ public:
   size_t array_size() const {return m_size;}
   const void * get_data(const void * ptr_to_array) const {return ptr_to_array;}
   EValueType e_value_type() const final {return EValueType::ArrayValueType;}
+
+  void * allocate(size_t n) const override
+  {
+    return dynamic_cast<const PhysicalValueType *>(m_element_value_type)->allocate(n *
+             array_size());
+  }
+  void deallocate(void * ptr, size_t n) const override
+  {
+    return dynamic_cast<const PhysicalValueType *>(m_element_value_type)->deallocate(ptr,
+             n * array_size());
+  }
+  void ctor(void * ptr) const override
+  {
+    auto elt_pvt = dynamic_cast<const PhysicalValueType *>(m_element_value_type);
+    for (size_t i = 0; i < array_size(); i++) {
+      elt_pvt->ctor(byte_offset(ptr, m_element_value_type->sizeof_type() * i));
+    }
+  }
+  void dtor(void * ptr) const override
+  {
+    auto elt_pvt = dynamic_cast<const PhysicalValueType *>(m_element_value_type);
+    for (size_t i = 0; i < array_size(); i++) {
+      elt_pvt->dtor(byte_offset(ptr, m_element_value_type->sizeof_type() * i));
+    }
+  }
 };
 
 class SpanSequenceValueType : public AnyValueType
@@ -333,11 +428,11 @@ protected:
 
 public:
   ROSIDLC_CallbackSpanSequenceValueType(
-    const AnyValueType * element_value_type,
-    const MetaMember<TypeGenerator::ROSIDL_C> & m)
+    const AnyValueType * element_value_type, const MetaMember<TypeGenerator::ROSIDL_C> & m)
   : CallbackSpanSequenceValueType(element_value_type, m.size_function, m.get_const_function),
     m_resize_function(m.resize_function)
-  {}
+  {
+  }
 
   void resize(void * obj, size_t count) const override
   {
@@ -354,33 +449,27 @@ protected:
 
 public:
   ROSIDLCPP_CallbackSpanSequenceValueType(
-    const AnyValueType * element_value_type,
-    const MetaMember<TypeGenerator::ROSIDL_Cpp> & m)
+    const AnyValueType * element_value_type, const MetaMember<TypeGenerator::ROSIDL_Cpp> & m)
   : CallbackSpanSequenceValueType(element_value_type, m.size_function, m.get_const_function),
     m_resize_function(m.resize_function)
-  {}
-
-  void resize(void * obj, size_t count) const override
   {
-    m_resize_function(obj, count);
   }
+
+  void resize(void * obj, size_t count) const override {m_resize_function(obj, count);}
 };
 
-class ROSIDLC_SpanSequenceValueType : public SpanSequenceValueType
+struct ROSIDLC_SequenceObject
+{
+  void * data;
+  size_t size;     /*!< The number of valid items in data */
+  size_t capacity; /*!< The number of allocated items in data */
+};
+
+class ROSIDLC_SpanSequenceValueType : public SpanSequenceValueType,
+  public ConcreteValueType<ROSIDLC_SequenceObject>
 {
 protected:
   const AnyValueType * m_element_value_type;
-  struct ROSIDLC_SequenceObject
-  {
-    void * data;
-    size_t size;     /*!< The number of valid items in data */
-    size_t capacity; /*!< The number of allocated items in data */
-  };
-
-  const ROSIDLC_SequenceObject * get_value(const void * ptr_to_sequence) const
-  {
-    return static_cast<const ROSIDLC_SequenceObject *>(ptr_to_sequence);
-  }
 
 public:
   explicit ROSIDLC_SpanSequenceValueType(const AnyValueType * element_value_type)
@@ -392,15 +481,39 @@ public:
   const AnyValueType * element_value_type() const override {return m_element_value_type;}
   size_t sequence_size(const void * ptr_to_sequence) const override
   {
-    return get_value(ptr_to_sequence)->size;
+    return cast_ptr(ptr_to_sequence)->size;
   }
+
   const void * sequence_contents(const void * ptr_to_sequence) const final
   {
-    return get_value(ptr_to_sequence)->data;
+    return cast_ptr(ptr_to_sequence)->data;
+  }
+
+  void resize(void * ptr_to_sequence, size_t count) const final
+  {
+    auto & seq = *cast_ptr(ptr_to_sequence);
+    auto & concrete_element_value_type =
+      dynamic_cast<const PhysicalValueType &>(*element_value_type());
+    auto old_data = seq.data;
+    auto old_size = seq.size;
+
+    for (size_t i = 0; i < old_size; i++) {
+      concrete_element_value_type.dtor(
+        byte_offset(old_data, i * element_value_type()->sizeof_type()));
+    }
+    concrete_element_value_type.deallocate(old_data, old_size);
+
+    seq.data = concrete_element_value_type.allocate(count);
+    seq.size = seq.capacity = count;
+
+    for (size_t i = 0; i < count; i++) {
+      concrete_element_value_type.ctor(
+        byte_offset(seq.data, i * element_value_type()->sizeof_type()));
+    }
   }
 };
 
-struct PrimitiveValueType : public AnyValueType
+struct PrimitiveValueType : public AnyValueType, public PhysicalValueType
 {
   const ROSIDL_TypeKind m_type_kind;
 
@@ -411,67 +524,98 @@ struct PrimitiveValueType : public AnyValueType
     assert(type_kind != ROSIDL_TypeKind::WSTRING);
     assert(type_kind != ROSIDL_TypeKind::MESSAGE);
   }
+
   ROSIDL_TypeKind type_kind() const {return m_type_kind;}
-  size_t sizeof_type() const final
+
+  template<typename UnaryFunction>
+  auto apply_to_concrete_type(UnaryFunction f) const
   {
-    switch (m_type_kind) {
+    switch (type_kind()) {
       case ROSIDL_TypeKind::FLOAT:
-        return sizeof(float);
+        return f(type_identity<float>{});
       case ROSIDL_TypeKind::DOUBLE:
-        return sizeof(double);
+        return f(type_identity<double>{});
       case ROSIDL_TypeKind::LONG_DOUBLE:
-        return sizeof(long double);
+        return f(type_identity<long double>{});
       case ROSIDL_TypeKind::CHAR:
-        return sizeof(char);
+        return f(type_identity<char>{});
       case ROSIDL_TypeKind::WCHAR:
-        return sizeof(char16_t);
+        return f(type_identity<char16_t>{});
       case ROSIDL_TypeKind::BOOLEAN:
-        return sizeof(bool);
-      case ROSIDL_TypeKind::OCTET:
-        return sizeof(unsigned char);
+        return f(type_identity<bool>{});
+      case ROSIDL_TypeKind::OCTET:  // NOLINT(bugprone-branch-clone)
+        return f(type_identity<unsigned char>{});
       case ROSIDL_TypeKind::UINT8:
-        return sizeof(uint_least8_t);
+        return f(type_identity<uint_least8_t>{});
       case ROSIDL_TypeKind::INT8:
-        return sizeof(int_least8_t);
+        return f(type_identity<int8_t>{});
       case ROSIDL_TypeKind::UINT16:
-        return sizeof(uint_least16_t);
+        return f(type_identity<uint16_t>{});
       case ROSIDL_TypeKind::INT16:
-        return sizeof(int_least16_t);
+        return f(type_identity<int16_t>{});
       case ROSIDL_TypeKind::UINT32:
-        return sizeof(uint_least32_t);
+        return f(type_identity<uint32_t>{});
       case ROSIDL_TypeKind::INT32:
-        return sizeof(int_least32_t);
+        return f(type_identity<int32_t>{});
       case ROSIDL_TypeKind::UINT64:
-        return sizeof(uint_least64_t);
+        return f(type_identity<uint64_t>{});
       case ROSIDL_TypeKind::INT64:
-        return sizeof(int_least64_t);
+        return f(type_identity<int64_t>{});
       case ROSIDL_TypeKind::STRING:
       case ROSIDL_TypeKind::WSTRING:
       case ROSIDL_TypeKind::MESSAGE:
-        throw std::runtime_error(
-                "not a primitive value type: " +
-                std::to_string(std::underlying_type_t<ROSIDL_TypeKind>(m_type_kind)));
+        throw std::logic_error("not a primitive");
     }
   }
+
+  void * allocate(size_t n) const override
+  {
+    return apply_to_concrete_type([&](auto t) {
+               using T = typename decltype(t)::type;
+               std::allocator<T> allocator;
+               void * result = allocator.allocate(n);
+               return result;
+             });
+  }
+
+  void deallocate(void * ptr, size_t n) const override
+  {
+    return apply_to_concrete_type([&](auto t) {
+               using T = typename decltype(t)::type;
+               std::allocator<T> allocator;
+               return allocator.deallocate(static_cast<T *>(ptr), n);
+             });
+  }
+  void ctor(void * ptr) const override
+  {
+    return apply_to_concrete_type([&](auto t) {
+               using T = typename decltype(t)::type;
+               new (ptr) T();
+             });
+  }
+  void dtor(void * ptr) const override
+  {
+    return apply_to_concrete_type([&](auto t) {
+               using T = typename decltype(t)::type;
+               static_cast<T *>(ptr)->~T();
+             });
+  }
+
+  size_t sizeof_type() const final
+  {
+    return apply_to_concrete_type([&](auto t) {return sizeof(typename decltype(t)::type);});
+  }
+
   EValueType e_value_type() const override {return EValueType::PrimitiveValueType;}
 };
 
-class BoolVectorValueType : public AnyValueType
+class BoolVectorValueType : public AnyValueType, public ConcreteValueType<std::vector<bool>>
 {
 protected:
-  const std::vector<bool> * get_value(const void * ptr_to_sequence) const
-  {
-    return static_cast<const std::vector<bool> *>(ptr_to_sequence);
-  }
-  std::vector<bool> * get_value(void * ptr_to_sequence) const
-  {
-    return static_cast<std::vector<bool> *>(ptr_to_sequence);
-  }
-
   static std::unique_ptr<PrimitiveValueType> s_element_value_type;
 
 public:
-  size_t sizeof_type() const override {return sizeof(std::vector<bool>);}
+  size_t sizeof_type() const override {return sizeof(concrete_type);}
 
   static const AnyValueType * element_value_type()
   {
@@ -483,15 +627,15 @@ public:
 
   std::vector<bool>::const_iterator begin(const void * ptr_to_sequence) const
   {
-    return get_value(ptr_to_sequence)->begin();
+    return cast_ptr(ptr_to_sequence)->begin();
   }
   std::vector<bool>::const_iterator end(const void * ptr_to_sequence) const
   {
-    return get_value(ptr_to_sequence)->end();
+    return cast_ptr(ptr_to_sequence)->end();
   }
-  size_t size(const void * ptr_to_sequence) const {return get_value(ptr_to_sequence)->size();}
+  size_t size(const void * ptr_to_sequence) const {return cast_ptr(ptr_to_sequence)->size();}
   EValueType e_value_type() const final {return EValueType::BoolVectorValueType;}
-  virtual void resize(void * obj, size_t count) const final {return get_value(obj)->resize(count);}
+  virtual void resize(void * obj, size_t count) const final {return cast_ptr(obj)->resize(count);}
 };
 
 class ROSIDLC_StructValueType;
@@ -518,92 +662,113 @@ public:
   virtual void assign(void * obj, const char_traits::char_type * s, size_t count) const = 0;
 };
 
-struct ROSIDLC_StringValueType : public U8StringValueType
+struct ROSIDLC_StringValueType : public U8StringValueType,
+  public ConcreteValueType<rosidl_generator_c__String>
 {
 public:
-  using type = rosidl_generator_c__String;
-
   TypedSpan<const char_traits::char_type> data(const void * ptr) const override
   {
-    auto str = static_cast<const type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {str->data, str->size};
   }
   TypedSpan<char_traits::char_type> data(void * ptr) const override
   {
-    auto str = static_cast<type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {str->data, str->size};
   }
-  size_t sizeof_type() const override {return sizeof(type);}
+  void ctor(concrete_type * t) const override
+  {
+    ConcreteValueType::ctor(t);
+    rosidl_generator_c__String__init(t);
+  }
+  void dtor(concrete_type * t) const override
+  {
+    rosidl_generator_c__String__fini(t);
+    ConcreteValueType::dtor(t);
+  }
+
+  size_t sizeof_type() const override {return sizeof(concrete_type);}
   void assign(void * obj, const char_traits::char_type * s, size_t count) const override
   {
-    rosidl_generator_c__String__assignn(static_cast<type *>(obj), s, count);
+    rosidl_generator_c__String__assignn(cast_ptr(obj), s, count);
   }
 };
 
-class ROSIDLC_WStringValueType : public U16StringValueType
+class ROSIDLC_WStringValueType : public U16StringValueType,
+  public ConcreteValueType<rosidl_generator_c__U16String>
 {
 public:
-  using type = rosidl_generator_c__U16String;
-
   TypedSpan<const char_traits::char_type> data(const void * ptr) const override
   {
-    auto str = static_cast<const type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {reinterpret_cast<const char_traits::char_type *>(str->data), str->size};
   }
   TypedSpan<char_traits::char_type> data(void * ptr) const override
   {
-    auto str = static_cast<type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {reinterpret_cast<char_traits::char_type *>(str->data), str->size};
   }
-  size_t sizeof_type() const override {return sizeof(type);}
+
+  void ctor(concrete_type * t) const override
+  {
+    ConcreteValueType::ctor(t);
+    rosidl_generator_c__U16String__init(t);
+  }
+  void dtor(concrete_type * t) const override
+  {
+    rosidl_generator_c__U16String__fini(t);
+    ConcreteValueType::dtor(t);
+  }
+
   void assign(void * obj, const char_traits::char_type * s, size_t count) const override
   {
-    rosidl_generator_c__U16String__assignn(static_cast<type *>(obj),
-      reinterpret_cast<const uint16_t *>(s), count);
+    rosidl_generator_c__U16String__assignn(
+      cast_ptr(obj), reinterpret_cast<const uint16_t *>(s), count);
   }
+
+  size_t sizeof_type() const override {return sizeof(concrete_type);}
 };
 
-class ROSIDLCPP_StringValueType : public U8StringValueType
+class ROSIDLCPP_StringValueType : public U8StringValueType, public ConcreteValueType<std::string>
 {
 public:
-  using type = std::string;
-
   TypedSpan<const char_traits::char_type> data(const void * ptr) const override
   {
-    auto str = static_cast<const type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {str->data(), str->size()};
   }
   TypedSpan<char_traits::char_type> data(void * ptr) const override
   {
-    auto str = static_cast<type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {str->data(), str->size()};
   }
-  size_t sizeof_type() const override {return sizeof(type);}
-  void assign(void * obj, const char_traits::char_type * s, size_t count) const override
+  size_t sizeof_type() const override {return sizeof(concrete_type);}
+  void assign(void * ptr, const char_traits::char_type * s, size_t count) const override
   {
-    static_cast<type *>(obj)->assign(s, count);
+    cast_ptr(ptr)->assign(s, count);
   }
 };
 
-class ROSIDLCPP_U16StringValueType : public U16StringValueType
+class ROSIDLCPP_U16StringValueType : public U16StringValueType,
+  public ConcreteValueType<std::u16string>
 {
 public:
-  using type = std::u16string;
-
   TypedSpan<const char_traits::char_type> data(const void * ptr) const override
   {
-    auto str = static_cast<const type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {str->data(), str->size()};
   }
   TypedSpan<char_traits::char_type> data(void * ptr) const override
   {
-    auto str = static_cast<type *>(ptr);
+    auto str = cast_ptr(ptr);
     return {str->data(), str->size()};
   }
-  size_t sizeof_type() const override {return sizeof(type);}
-  void assign(void * obj, const char_traits::char_type * s, size_t count) const override
+
+  size_t sizeof_type() const override {return sizeof(concrete_type);}
+
+  void assign(void * ptr, const char_traits::char_type * s, size_t count) const override
   {
-    static_cast<type *>(obj)->assign(s, count);
+    cast_ptr(ptr)->assign(s, count);
   }
 };
 
