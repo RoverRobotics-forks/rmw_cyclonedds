@@ -18,8 +18,7 @@
 
 namespace rmw_cyclonedds_cpp
 {
-static std::unordered_map<
-  const rosidl_message_type_support_t *, std::unique_ptr<StructValueType>>
+static std::unordered_map<const rosidl_message_type_support_t *, std::unique_ptr<StructValueType>>
 s_struct_cache;
 
 class ROSIDLC_StructValueType : public StructValueType
@@ -42,7 +41,8 @@ public:
   size_t sizeof_struct() const override {return impl.size_of_;}
   size_t n_members() const override {return impl.member_count_;}
   const Member * get_member(size_t index) const override {return &m_members.at(index);}
-  void init(void * obj)const override {impl.init_function(obj, ROSIDL_RUNTIME_C_MSG_INIT_ZERO);}
+  void ctor(void * ptr) const override {impl.init_function(ptr, ROSIDL_RUNTIME_C_MSG_INIT_ZERO);}
+  void dtor(void * ptr) const override {impl.fini_function(ptr);}
 };
 
 class ROSIDLCPP_StructValueType : public StructValueType
@@ -65,10 +65,11 @@ public:
   size_t sizeof_struct() const override {return impl.size_of_;}
   size_t n_members() const override {return impl.member_count_;}
   const Member * get_member(size_t index) const final {return &m_members.at(index);}
-  void init(void * obj)const override
+  void ctor(void * ptr) const override
   {
-    impl.init_function(obj, rosidl_generator_cpp::MessageInitialization::ZERO);
+    impl.init_function(ptr, rosidl_generator_cpp::MessageInitialization::ZERO);
   }
+  void dtor(void * ptr) const override {impl.fini_function(ptr);}
 };
 
 const StructValueType * from_rosidl(const rosidl_message_type_support_t * mts)
@@ -156,11 +157,11 @@ ROSIDLC_StructValueType::ROSIDLC_StructValueType(decltype(impl) impl)
     if (!member_impl.is_array_) {
       member_value_type = element_value_type;
     } else if (member_impl.array_size_ != 0 && !member_impl.is_upper_bound_) {
-      member_value_type = make_value_type<ArrayValueType>(element_value_type,
-          member_impl.array_size_);
+      member_value_type =
+        make_value_type<ArrayValueType>(element_value_type, member_impl.array_size_);
     } else if (member_impl.size_function) {
-      member_value_type = make_value_type<ROSIDLC_CallbackSpanSequenceValueType>(element_value_type,
-          member_impl);
+      member_value_type =
+        make_value_type<ROSIDLC_CallbackSpanSequenceValueType>(element_value_type, member_impl);
     } else {
       member_value_type = make_value_type<ROSIDLC_SpanSequenceValueType>(element_value_type);
     }
@@ -213,13 +214,13 @@ ROSIDLCPP_StructValueType::ROSIDLCPP_StructValueType(decltype(impl) impl)
     if (!member_impl.is_array_) {
       a_member.value_type = element_value_type;
     } else if (member_impl.array_size_ != 0 && !member_impl.is_upper_bound_) {
-      a_member.value_type = make_value_type<ArrayValueType>(element_value_type,
-          member_impl.array_size_);
+      a_member.value_type =
+        make_value_type<ArrayValueType>(element_value_type, member_impl.array_size_);
     } else if (ROSIDL_TypeKind(member_impl.type_id_) == ROSIDL_TypeKind::BOOLEAN) {
       a_member.value_type = make_value_type<BoolVectorValueType>();
     } else {
-      a_member.value_type = make_value_type<ROSIDLCPP_CallbackSpanSequenceValueType>(
-        element_value_type, member_impl);
+      a_member.value_type =
+        make_value_type<ROSIDLCPP_CallbackSpanSequenceValueType>(element_value_type, member_impl);
     }
     m_members.push_back(a_member);
   }
