@@ -168,7 +168,7 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
 {
   try {
     const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(topiccmn);
-    auto d = pool_make_unique<serdata_rmw>(topic, kind);
+    auto d = std::make_unique<serdata_rmw>(topic, kind);
     if (kind != SDK_DATA) {
       /* ROS2 doesn't do keys, so SDK_KEY is trivial */
     } else if (!topic->is_request_header) {
