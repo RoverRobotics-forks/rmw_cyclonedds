@@ -168,7 +168,7 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
 {
   try {
     const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(topiccmn);
-    auto d = std::make_unique<serdata_rmw>(topic, kind);
+    auto d = pool_make_unique<serdata_rmw>(topic, kind);
     if (kind != SDK_DATA) {
       /* ROS2 doesn't do keys, so SDK_KEY is trivial */
     } else if (!topic->is_request_header) {
@@ -504,7 +504,7 @@ void serdata_rmw::resize(size_t requested_size)
   /* FIXME: CDR padding in DDSI makes me do this to avoid reading beyond the bounds
   when copying data to network.  Should fix Cyclone to handle that more elegantly.  */
   size_t n_pad_bytes = (-requested_size) % 4;
-  m_data.reset(new byte[requested_size + n_pad_bytes]);
+  m_data = pool_alloc(requested_size + n_pad_bytes);
   m_size = requested_size + n_pad_bytes;
 
   // zero the very end. The caller isn't necessarily going to overwrite it.

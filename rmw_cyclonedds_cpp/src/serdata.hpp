@@ -18,6 +18,7 @@
 #include <string>
 
 #include "TypeSupport2.hpp"
+#include "allocation.hpp"
 #include "bytewise.hpp"
 #include "dds/ddsi/ddsi_serdata.h"
 #include "dds/ddsi/ddsi_sertopic.h"
@@ -51,7 +52,7 @@ protected:
   size_t m_size {0};
   /* first two bytes of data is CDR encoding
      second two bytes are encoding options */
-  std::unique_ptr<byte[]> m_data {nullptr};
+ std::unique_ptr<void, std::function<void(void *)>> m_data {nullptr};
 
 public:
   serdata_rmw(const ddsi_sertopic * topic, ddsi_serdata_kind kind);

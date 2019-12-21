@@ -37,6 +37,8 @@ if(NOT CycloneDDS_FOUND)
   return()
 endif()
 
+find_package(Boost REQUIRED)
+
 find_package(rmw REQUIRED)
 find_package(rosidl_generator_c REQUIRED)
 find_package(rosidl_typesupport_introspection_c REQUIRED)
@@ -57,14 +59,17 @@ add_library(rmw_cyclonedds_cpp
   src/exception.cpp
   src/deserialization_exception.cpp
   src/Serialization.cpp
-  src/TypeSupport2.cpp)
+  src/TypeSupport2.cpp
+  src/allocation.hpp)
 
 target_include_directories(rmw_cyclonedds_cpp PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
-)
+  ${Boost_INCLUDE_DIRS}
+  )
 
-target_link_libraries(rmw_cyclonedds_cpp CycloneDDS::ddsc)
+target_link_libraries(rmw_cyclonedds_cpp
+  CycloneDDS::ddsc)
 
 ament_target_dependencies(rmw_cyclonedds_cpp
   "rcutils"
