@@ -18,10 +18,23 @@
 #include <string>
 
 #include "TypeSupport2.hpp"
-#include "allocation.hpp"
 #include "bytewise.hpp"
 #include "dds/ddsi/ddsi_serdata.h"
 #include "dds/ddsi/ddsi_sertopic.h"
+
+#include <boost/pool/singleton_pool.hpp>
+#include <functional>
+#include <memory>
+#include <boost/pool/object_pool.hpp>
+
+#include "bytewise.hpp"
+
+class Allocator
+{
+public:
+  virtual void * allocate(size_t n_bytes) = 0;
+  virtual void free(void *, size_t n_bytes) = 0;
+};
 
 namespace rmw_cyclonedds_cpp
 {
@@ -44,6 +57,7 @@ struct sertopic_rmw : ddsi_sertopic
   std::string cpp_name_type_name;
 #endif
   std::unique_ptr<const rmw_cyclonedds_cpp::BaseCDRWriter> cdr_writer;
+  mutable boost::pool<> message_buffer_pool;
 };
 
 class serdata_rmw : public ddsi_serdata
@@ -52,13 +66,19 @@ protected:
   size_t m_size {0};
   /* first two bytes of data is CDR encoding
      second two bytes are encoding options */
- std::unique_ptr<void, std::function<void(void *)>> m_data {nullptr};
+  void * m_data {nullptr};
 
 public:
   serdata_rmw(const ddsi_sertopic * topic, ddsi_serdata_kind kind);
   void resize(size_t requested_size);
   size_t size() const {return m_size;}
-  void * data() const {return m_data.get();}
+  void * data() const {return m_data;}
+  ~serdata_rmw(){
+    if (m_data) {
+      auto &mbp = static_cast<const sertopic_rmw *>(this->topic)->message_buffer_pool;
+      mbp.free(m_data, 1 + (m_size - 1) / mbp.get_requested_size());
+    }
+  }
 };
 
 typedef struct cdds_request_header

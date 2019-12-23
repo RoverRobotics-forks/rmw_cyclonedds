@@ -168,7 +168,7 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
 {
   try {
     const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(topiccmn);
-    auto d = std::make_unique<serdata_rmw>(topic, kind);
+    auto d = pool_make_unique<serdata_rmw>(topic, kind);
     if (kind != SDK_DATA) {
       /* ROS2 doesn't do keys, so SDK_KEY is trivial */
     } else if (!topic->is_request_header) {
@@ -382,7 +382,7 @@ static void sertopic_rmw_free(struct ddsi_sertopic * tpcmn)
 #if DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
   ddsi_sertopic_fini(tpcmn);
 #endif
-  delete tp;
+  sertopic_pool.free(tp);
 }
 
 static void sertopic_rmw_zero_samples(const struct ddsi_sertopic * d, void * samples, size_t count)
@@ -462,12 +462,15 @@ static std::string get_type_name(const char * type_support_identifier, void * ty
   }
 }
 
+boost::object_pool<sertopic_rmw> sertopic_pool {};
+
 struct sertopic_rmw * create_sertopic(
   const char * topicname, const char * type_support_identifier,
   void * type_support, bool is_request_header,
   std::unique_ptr<rmw_cyclonedds_cpp::StructValueType> message_type)
 {
-  struct sertopic_rmw * st = new struct sertopic_rmw;
+  // todo: find an appropriate parent for this object pool
+  struct sertopic_rmw * st = sertopic_pool.malloc();
 #if DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
   std::string type_name = get_type_name(type_support_identifier, type_support);
   ddsi_sertopic_init(static_cast<struct ddsi_sertopic *>(st), topicname,
@@ -495,10 +498,16 @@ struct sertopic_rmw * create_sertopic(
 
 void serdata_rmw::resize(size_t requested_size)
 {
+  auto &mbp = static_cast<const sertopic_rmw *>(this->topic)->message_buffer_pool;
+
   if (!requested_size) {
     m_size = 0;
     m_data.reset();
     return;
+  }
+
+  if (m_data) {
+    mbp.free(m_data, 1 + (m_size - 1) / mbp.get_requested_size());
   }
 
   /* FIXME: CDR padding in DDSI makes me do this to avoid reading beyond the bounds
