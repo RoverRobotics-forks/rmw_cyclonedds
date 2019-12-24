@@ -61,6 +61,7 @@
    custom RHC was introduced at essentially the same time */
 #ifdef DDS_CYCLONEDDS_HANDLE
 #define MULTIDOMAIN 1
+#include "allocation.hpp"
 #include "rmw_cyclonedds_cpp/graphrhc.hpp"
 #else
 #define MULTIDOMAIN 0
@@ -1273,6 +1274,7 @@ extern "C" rmw_ret_t rmw_init_publisher_allocation(
   static_cast<void>(type_support);
   static_cast<void>(message_bounds);
   static_cast<void>(allocation);
+  allocation->data = new PublisherAllocationImpl();
   RMW_SET_ERROR_MSG("rmw_init_publisher_allocation: unimplemented");
   return RMW_RET_ERROR;
 }

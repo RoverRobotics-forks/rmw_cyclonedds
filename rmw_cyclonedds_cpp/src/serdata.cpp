@@ -117,10 +117,13 @@ static uint32_t serdata_rmw_size(const struct ddsi_serdata * dcmn)
   return size_u32;
 }
 
+
 static void serdata_rmw_free(struct ddsi_serdata * dcmn)
 {
-  auto * d = static_cast<const serdata_rmw *>(dcmn);
-  delete d;
+  auto * d = static_cast<serdata_rmw *>(dcmn);
+
+  d->ops->free(d);
+  serdata_pool.destroy(d);
 }
 
 static struct ddsi_serdata * serdata_rmw_from_ser(
@@ -128,7 +131,8 @@ static struct ddsi_serdata * serdata_rmw_from_ser(
   enum ddsi_serdata_kind kind,
   const struct nn_rdata * fragchain, size_t size)
 {
-  auto d = std::make_unique<serdata_rmw>(topic, kind);
+  topic->serdata_ops->free
+  std::unique_ptr<serdata_rmw, decltype(&serdata_rmw_free)> d{serdata_pool.construct(topic,kind), &serdata_rmw_free};
   uint32_t off = 0;
   assert(fragchain->min == 0);
   assert(fragchain->maxp1 >= off);    /* CDR header must be in first fragment */
@@ -168,7 +172,7 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
 {
   try {
     const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(topiccmn);
-    auto d = pool_make_unique<serdata_rmw>(topic, kind);
+    auto d = std::unique_ptr<sertopic_rmw>{serdata_pool.construct(topic,kind), [](auto x){serdata_pool.destroy(x);}};
     if (kind != SDK_DATA) {
       /* ROS2 doesn't do keys, so SDK_KEY is trivial */
     } else if (!topic->is_request_header) {
@@ -382,7 +386,7 @@ static void sertopic_rmw_free(struct ddsi_sertopic * tpcmn)
 #if DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
   ddsi_sertopic_fini(tpcmn);
 #endif
-  sertopic_pool.free(tp);
+  delete tp;
 }
 
 static void sertopic_rmw_zero_samples(const struct ddsi_sertopic * d, void * samples, size_t count)

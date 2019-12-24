@@ -60,6 +60,7 @@ add_library(rmw_cyclonedds_cpp
   src/deserialization_exception.cpp
   src/Serialization.cpp
   src/TypeSupport2.cpp
+  src/allocation.cpp
   )
 
 target_include_directories(rmw_cyclonedds_cpp PUBLIC

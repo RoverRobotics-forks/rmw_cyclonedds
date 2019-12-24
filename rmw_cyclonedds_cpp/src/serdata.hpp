@@ -47,6 +47,8 @@ struct CddsTypeSupport
   const char * typesupport_identifier_;
 };
 
+class serdata_rmw;
+
 struct sertopic_rmw : ddsi_sertopic
 {
   CddsTypeSupport type_support;
@@ -58,6 +60,7 @@ struct sertopic_rmw : ddsi_sertopic
 #endif
   std::unique_ptr<const rmw_cyclonedds_cpp::BaseCDRWriter> cdr_writer;
   mutable boost::pool<> message_buffer_pool;
+  mutable boost::object_pool<serdata_rmw> serdata_pool;
 };
 
 class serdata_rmw : public ddsi_serdata
