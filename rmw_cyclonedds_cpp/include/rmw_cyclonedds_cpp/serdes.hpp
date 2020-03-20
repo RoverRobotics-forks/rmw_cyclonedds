@@ -111,7 +111,7 @@ public:
   inline cycdeser & operator>>(float & x) {deserialize(x); return *this;}
   inline cycdeser & operator>>(double & x) {deserialize(x); return *this;}
   inline cycdeser & operator>>(std::string & x) {deserialize(x); return *this;}
-  inline cycdeser & operator>>(std::wstring & x) {deserialize(x); return *this;}
+  inline cycdeser & operator>>(std::u16string & x) {deserialize(x); return *this;}
   template<class T>
   inline cycdeser & operator>>(std::vector<T> & x) {deserialize(x); return *this;}
   template<class T, size_t S>
@@ -166,12 +166,22 @@ public:
     }
     pos += sz;
   }
-  inline void deserialize(std::wstring & x)
+  inline void deserialize(std::u16string & x)
   {
-    const uint32_t sz = deserialize_len(sizeof(wchar_t));
-    // wstring is not null-terminated in cdr
-    x = std::wstring(reinterpret_cast<const wchar_t *>(data + pos), sz);
-    pos += sz * sizeof(wchar_t);
+    // DDS-XTypes 7.4.1.1.2
+    // length is the number of bytes, not the number of characters.
+    const uint32_t sz = deserialize_len(sizeof(char16_t));
+    // CDR wstring is not null-terminated
+    x.resize(sz / sizeof(char16_t));
+
+    if (swap_bytes) {
+      std::vector<uint16_t> v(sz / sizeof(char16_t));
+      deserializeA(v.data(), sz / sizeof(char16_t));
+      x.assign(v.begin(), v.end());
+    } else {
+      x.assign(reinterpret_cast<const char16_t *>(data + pos), sz / sizeof(char16_t));
+    }
+    pos += sz;
   }
 
 #define DESER8_A(T) DESER_A(T, )
@@ -265,7 +275,7 @@ public:
   inline cycprint & operator>>(float & x) {print(x); return *this;}
   inline cycprint & operator>>(double & x) {print(x); return *this;}
   inline cycprint & operator>>(std::string & x) {print(x); return *this;}
-  inline cycprint & operator>>(std::wstring & x) {print(x); return *this;}
+  inline cycprint & operator>>(std::u16string & x) {print(x); return *this;}
   template<class T>
   inline cycprint & operator>>(std::vector<T> & x) {print(x); return *this;}
   template<class T, size_t S>
@@ -338,13 +348,22 @@ public:
     prtf(&buf, &bufsize, "\"%*.*s\"", len, len, static_cast<const char *>(data + pos));
     pos += sz;
   }
-  inline void print(std::wstring & x)
+  inline void print(std::u16string & x)
   {
-    const uint32_t sz = get_len(sizeof(wchar_t));
-    // wstring is not null-terminated in cdr
-    x = std::wstring(reinterpret_cast<const wchar_t *>(data + pos), sz);
+    // DDS-XTypes 7.4.1.1.2
+    // length is the number of bytes, not the number of characters.
+    const uint32_t sz = get_len(sizeof(char16_t));
+    // CDR wstring is not null-terminated
+    x.resize(sz / sizeof(char16_t));
+
+    if (swap_bytes) {
+      // todo
+    } else {
+      x.assign(reinterpret_cast<const char16_t *>(data + pos), sz / sizeof(char16_t));
+    }
     prtf(&buf, &bufsize, "\"%ls\"", x.c_str());
-    pos += sz * sizeof(wchar_t);
+
+    pos += sz;
   }
 
   template<class T>

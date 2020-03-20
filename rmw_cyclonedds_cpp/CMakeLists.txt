@@ -53,7 +53,6 @@ add_library(rmw_cyclonedds_cpp
   src/serdata.cpp
   src/serdes.cpp
   src/graphrhc.cpp
-  src/u16string.cpp
   src/exception.cpp
   src/deserialization_exception.cpp
   src/Serialization.cpp

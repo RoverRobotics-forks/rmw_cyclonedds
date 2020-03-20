@@ -152,7 +152,7 @@ public:
 
 public:
   explicit CDRWriter(std::unique_ptr<const StructValueType> root_value_type)
-  : eversion{EncodingVersion::CDR_Legacy}, max_align{8},
+  : eversion{EncodingVersion::CDR1}, max_align{8},
     m_root_value_type{std::move(root_value_type)},
     trivially_serialized_cache{}
   {
@@ -239,10 +239,7 @@ public:
     CDRCursor * cursor, const void * data) const
   {
     put_rtps_header(cursor);
-
-    if (eversion == EncodingVersion::CDR_Legacy) {
-      cursor->rebase(+4);
-    }
+    cursor->rebase(+4);
 
     if (m_root_value_type->n_members() == 0 && eversion == EncodingVersion::CDR_Legacy) {
       char dummy = '\0';
@@ -251,26 +248,19 @@ public:
       serialize(cursor, data, m_root_value_type.get());
     }
 
-    if (eversion == EncodingVersion::CDR_Legacy) {
-      cursor->rebase(-4);
-    }
+    cursor->rebase(-4);
   }
 
   void serialize_top_level(
     CDRCursor * cursor, const cdds_request_wrapper_t & request) const
   {
     put_rtps_header(cursor);
-    if (eversion == EncodingVersion::CDR_Legacy) {
-      cursor->rebase(+4);
-    }
+    cursor->rebase(+4);
     cursor->put_bytes(&request.header.guid, sizeof(request.header.guid));
     cursor->put_bytes(&request.header.seq, sizeof(request.header.seq));
 
     serialize(cursor, request.data, m_root_value_type.get());
-
-    if (eversion == EncodingVersion::CDR_Legacy) {
-      cursor->rebase(-4);
-    }
+    cursor->rebase(-4);
   }
 
 protected:
