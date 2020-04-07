@@ -15,7 +15,7 @@ jobs:
     - name: get dependencies
       run: |
         python3 -c '
-        import json
+        import json, os
         event = json.load(os.environ['GITHUB_EVENT_PATH'])
         print("run on ",event["action"])
         '
