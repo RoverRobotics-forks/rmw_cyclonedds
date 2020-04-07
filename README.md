@@ -3,7 +3,7 @@
 **Easy, fast, reliable, small [Eclipse Cyclone DDS](https://github.com/eclipse-cyclonedds/cyclonedds) middleware** for ROS2. Make your **🐢 run like a 🚀** [Eclipse Cyclone DDS has great adopters](https://iot.eclipse.org/adopters/) and contributors in the ROS community and is an [Eclipse Foundation](https://www.eclipse.org) open source project of [Eclipse IoT](https://iot.eclipse.org) and [OpenADx](https://openadx.eclipse.org) (autonomous driving).
 
 This package lets [*ROS2*](https://index.ros.org/doc/ros2) use [*Eclipse Cyclone DDS*](https://github.com/eclipse-cyclonedds/cyclonedds) as the underlying DDS implementation.
-Cyclone DDS is ready to use. It seeks to give the fastest, easiest, and most robust ROS2 experience. Let the Cyclone blow you away!
+Cyclone DDS is ready to use. It seeks to give the fastest, easiest, and most robust ROS2 experience. Let the Cyclone blow you away!uaoeuaeo
 
 1. Install:
 
