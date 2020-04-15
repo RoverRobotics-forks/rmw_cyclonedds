@@ -1103,29 +1103,45 @@ extern "C" rmw_ret_t rmw_get_serialized_message_size(
   return RMW_RET_ERROR;
 }
 
+std::exception rcl_get_error(rmw_ret_t){
+  return std::runtime_error();
+}
+
+#define CATCH_RMW_ERRORS catch(RCLErrorBase& e) {\
+ rmw_log_error\
+}\
+RMW_HANDLE_ERROR
+#define RMW_HANDLE_ERROR \
+  RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("%s: %s", __func__, std::current_exception()->what()),
+
+void rmw_maybe_throw(rmw_ret_t ret, const std::string & prefix = ""){
+  if (ret != RMW_RET_OK) {
+    throw_from_rcl_error(ret, prefix);
+  }
+}
+
+
 extern "C" rmw_ret_t rmw_serialize(
   const void * ros_message,
   const rosidl_message_type_support_t * type_support,
-  rmw_serialized_message_t * serialized_message)
+  rmw_serialized_message_t * serialized_message) try
 {
-  rmw_ret_t ret;
-  try {
-    auto writer = rmw_cyclonedds_cpp::make_cdr_writer(
-      rmw_cyclonedds_cpp::make_message_value_type(type_support));
+  rmw_ret_t ret = RMW_ERROR;
+  auto writer = rmw_cyclonedds_cpp::make_cdr_writer(
+    rmw_cyclonedds_cpp::make_message_value_type(type_support));
 
-    auto size = writer->get_serialized_size(ros_message);
-    if ((ret = rmw_serialized_message_resize(serialized_message, size) != RMW_RET_OK)) {
+  auto size = writer->get_serialized_size(ros_message);
+  rmw_maybe_throw ((ret = rmw_serialized_message_resize(serialized_message, size) != RMW_RET_OK)) {
       RMW_SET_ERROR_MSG("rmw_serialize: failed to allocate space for message");
-      return ret;
-    }
-    writer->serialize(serialized_message->buffer, ros_message);
-    serialized_message->buffer_length = size;
-    return RMW_RET_OK;
-  } catch (std::exception & e) {
-    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("rmw_serialize: failed to serialize: %s", e.what());
-    return RMW_RET_ERROR;
+    return ret;
   }
-}
+  writer->serialize(serialized_message->buffer, ros_message);
+  serialized_message->buffer_length = size;
+  return RMW_RET_OK;
+} catch ( ... ) {
+  RMW_HANDLE_ERROR;
+  return ret;
+};
 
 extern "C" rmw_ret_t rmw_deserialize(
   const rmw_serialized_message_t * serialized_message,
