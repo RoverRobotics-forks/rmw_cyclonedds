@@ -33,18 +33,6 @@ struct CddsTypeSupport
   const char * typesupport_identifier_;
 };
 
-struct sertopic_rmw : ddsi_sertopic
-{
-  CddsTypeSupport type_support;
-  bool is_request_header;
-#if !DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
-  std::string cpp_name;
-  std::string cpp_type_name;
-  std::string cpp_name_type_name;
-#endif
-  std::unique_ptr<const rmw_cyclonedds_cpp::BaseCDRWriter> cdr_writer;
-};
-
 class serdata_rmw : public ddsi_serdata
 {
 protected:
@@ -82,13 +70,12 @@ void * create_response_type_support(
   const void * untyped_members,
   const char * typesupport_identifier);
 
-struct sertopic_rmw * create_sertopic(
-  const char * topicname, const char * type_support_identifier,
-  void * type_support, bool is_request_header,
-  std::unique_ptr<rmw_cyclonedds_cpp::StructValueType> message_type_support);
-
 struct ddsi_serdata * serdata_rmw_from_serialized_message(
   const struct ddsi_sertopic * topiccmn,
   const void * raw, size_t size);
+
+static std::string get_type_name(const char * type_support_identifier, void * type_support);
+
+static const struct ddsi_serdata_ops serdata_rmw_ops;
 
 #endif  // SERDATA_HPP_

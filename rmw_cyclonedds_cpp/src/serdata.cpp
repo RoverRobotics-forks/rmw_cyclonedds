@@ -30,6 +30,7 @@
 #include "rmw_cyclonedds_cpp/MessageTypeSupport.hpp"
 #include "rmw_cyclonedds_cpp/ServiceTypeSupport.hpp"
 #include "rmw_cyclonedds_cpp/serdes.hpp"
+#include "sertopic.hpp"
 
 /* Cyclone's nn_keyhash got renamed to ddsi_keyhash and shuffled around in the header
    files to avoid pulling in tons of things just for a definition of a keyhash.  This
@@ -198,7 +199,7 @@ static struct ddsi_serdata * serdata_rmw_from_sample(
   const void * sample)
 {
   try {
-    const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(topiccmn);
+    const struct rmw_cyclonedds_cpp::sertopic_rmw * topic = static_cast<const struct rmw_cyclonedds_cpp::sertopic_rmw *>(topiccmn);
     auto d = std::make_unique<serdata_rmw>(topic, kind);
     if (kind != SDK_DATA) {
       /* ROS2 doesn't do keys, so SDK_KEY is trivial */
@@ -226,7 +227,7 @@ struct ddsi_serdata * serdata_rmw_from_serialized_message(
   const struct ddsi_sertopic * topiccmn,
   const void * raw, size_t size)
 {
-  const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(topiccmn);
+  const struct rmw_cyclonedds_cpp::sertopic_rmw * topic = static_cast<const struct rmw_cyclonedds_cpp::sertopic_rmw *>(topiccmn);
   auto d = new serdata_rmw(topic, SDK_DATA);
   d->resize(size);
   memcpy(d->data(), raw, size);
@@ -271,7 +272,7 @@ static bool serdata_rmw_to_sample(
     static_cast<void>(bufptr);    // unused
     static_cast<void>(buflim);    // unused
     auto d = static_cast<const serdata_rmw *>(dcmn);
-    const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(d->topic);
+    const struct rmw_cyclonedds_cpp::sertopic_rmw * topic = static_cast<const struct rmw_cyclonedds_cpp::sertopic_rmw *>(d->topic);
     assert(bufptr == NULL);
     assert(buflim == NULL);
     if (d->kind != SDK_DATA) {
@@ -343,7 +344,7 @@ static size_t serdata_rmw_print(
 {
   try {
     auto d = static_cast<const serdata_rmw *>(dcmn);
-    const struct sertopic_rmw * topic = static_cast<const struct sertopic_rmw *>(tpcmn);
+    const struct rmw_cyclonedds_cpp::sertopic_rmw * topic = static_cast<const struct rmw_cyclonedds_cpp::sertopic_rmw *>(tpcmn);
     if (d->kind != SDK_DATA) {
       /* ROS2 doesn't do keys in a meaningful way yet */
       return static_cast<size_t>(snprintf(buf, bufsize, ":k:{}"));
@@ -426,91 +427,9 @@ static const struct ddsi_serdata_ops serdata_rmw_ops = {
 #endif
 };
 
-static void sertopic_rmw_free(struct ddsi_sertopic * tpcmn)
-{
-  struct sertopic_rmw * tp = static_cast<struct sertopic_rmw *>(tpcmn);
-#if DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
-  ddsi_sertopic_fini(tpcmn);
-#endif
-  delete tp;
-}
-
-static void sertopic_rmw_zero_samples(const struct ddsi_sertopic * d, void * samples, size_t count)
-{
-  static_cast<void>(d);
-  static_cast<void>(samples);
-  static_cast<void>(count);
-  /* Not using code paths that rely on the samples getting zero'd out */
-}
-
-static void sertopic_rmw_realloc_samples(
-  void ** ptrs, const struct ddsi_sertopic * d, void * old,
-  size_t oldcount, size_t count)
-{
-  static_cast<void>(ptrs);
-  static_cast<void>(d);
-  static_cast<void>(old);
-  static_cast<void>(oldcount);
-  static_cast<void>(count);
-  /* Not using code paths that rely on this (loans, dispose, unregister with instance handle,
-     content filters) */
-  abort();
-}
-
-static void sertopic_rmw_free_samples(
-  const struct ddsi_sertopic * d, void ** ptrs, size_t count,
-  dds_free_op_t op)
-{
-  static_cast<void>(d);    // unused
-  static_cast<void>(ptrs);    // unused
-  static_cast<void>(count);    // unused
-  /* Not using code paths that rely on this (dispose, unregister with instance handle, content
-     filters) */
-  assert(!(op & DDS_FREE_ALL_BIT));
-  (void) op;
-}
-
 #if DDSI_SERTOPIC_HAS_EQUAL_AND_HASH
-bool sertopic_rmw_equal(
-  const struct ddsi_sertopic * acmn, const struct ddsi_sertopic * bcmn)
-{
-  /* A bit of a guess: topics with the same name & type name are really the same if they have
-     the same type support identifier as well */
-  const struct sertopic_rmw * a = static_cast<const struct sertopic_rmw *>(acmn);
-  const struct sertopic_rmw * b = static_cast<const struct sertopic_rmw *>(bcmn);
-  if (a->is_request_header != b->is_request_header) {
-    return false;
-  }
-  if (strcmp(
-      a->type_support.typesupport_identifier_,
-      b->type_support.typesupport_identifier_) != 0)
-  {
-    return false;
-  }
-  return true;
-}
 
-uint32_t sertopic_rmw_hash(const struct ddsi_sertopic * tpcmn)
-{
-  const struct sertopic_rmw * tp = static_cast<const struct sertopic_rmw *>(tpcmn);
-  uint32_t h2 = static_cast<uint32_t>(std::hash<bool>{} (tp->is_request_header));
-  uint32_t h1 =
-    static_cast<uint32_t>(std::hash<std::string>{} (std::string(
-      tp->type_support.typesupport_identifier_)));
-  return h1 ^ h2;
-}
 #endif
-
-static const struct ddsi_sertopic_ops sertopic_rmw_ops = {
-  sertopic_rmw_free,
-  sertopic_rmw_zero_samples,
-  sertopic_rmw_realloc_samples,
-  sertopic_rmw_free_samples
-#if DDSI_SERTOPIC_HAS_EQUAL_AND_HASH
-  , sertopic_rmw_equal,
-  sertopic_rmw_hash
-#endif
-};
 
 template<typename MembersType>
 ROSIDL_TYPESUPPORT_INTROSPECTION_CPP_LOCAL
@@ -545,38 +464,6 @@ static std::string get_type_name(const char * type_support_identifier, void * ty
   } else {
     return "absent";
   }
-}
-
-struct sertopic_rmw * create_sertopic(
-  const char * topicname, const char * type_support_identifier,
-  void * type_support, bool is_request_header,
-  std::unique_ptr<rmw_cyclonedds_cpp::StructValueType> message_type)
-{
-  struct sertopic_rmw * st = new struct sertopic_rmw;
-#if DDSI_SERTOPIC_HAS_TOPICKIND_NO_KEY
-  std::string type_name = get_type_name(type_support_identifier, type_support);
-  ddsi_sertopic_init(
-    static_cast<struct ddsi_sertopic *>(st), topicname,
-    type_name.c_str(), &sertopic_rmw_ops, &serdata_rmw_ops, true);
-#else
-  memset(st, 0, sizeof(struct ddsi_sertopic));
-  st->cpp_name = std::string(topicname);
-  st->cpp_type_name = get_type_name(type_support_identifier, type_support);
-  st->cpp_name_type_name = st->cpp_name + std::string(";") + std::string(st->cpp_type_name);
-  st->ops = &sertopic_rmw_ops;
-  st->serdata_ops = &serdata_rmw_ops;
-  st->serdata_basehash = ddsi_sertopic_compute_serdata_basehash(st->serdata_ops);
-  st->name_type_name = const_cast<char *>(st->cpp_name_type_name.c_str());
-  st->name = const_cast<char *>(st->cpp_name.c_str());
-  st->type_name = const_cast<char *>(st->cpp_type_name.c_str());
-  st->iid = ddsi_iid_gen();
-  ddsrt_atomic_st32(&st->refc, 1);
-#endif
-  st->type_support.typesupport_identifier_ = type_support_identifier;
-  st->type_support.type_support_ = type_support;
-  st->is_request_header = is_request_header;
-  st->cdr_writer = rmw_cyclonedds_cpp::make_cdr_writer(std::move(message_type));
-  return st;
 }
 
 void serdata_rmw::resize(size_t requested_size)
