@@ -1,0 +1,16 @@
+definitions:
+  - &colcon_ignore
+    type: zip
+    url: data:application/zip;base64,UEsDBAoAAAAAAImJmFAAAAAAAAAAAAAAAAANAAAAQ09MQ09OX0lHTk9SRVBLAQIeAwoAAAAAAImJmFAAAAAAAAAAAAAAAAANAAAAAAAAAAAAAAC0gQAAAABDT0xDT05fSUdOT1JFUEsFBgAAAAABAAEAOwAAACsAAAAAAA==
+
+repositories:
+  ros2/rosidl_typesupport_connext: *colcon_ignore
+  ros2/rmw_connext: *colcon_ignore
+
+  eProsima/Fast-CDR: *colcon_ignore
+  eProsima/Fast-RTPS: *colcon_ignore
+  ros2/rosidl_typesupport_fastrtps: *colcon_ignore
+  ros2/rmw_fastrtps: *colcon_ignore
+
+  ros2/rmw_opensplice: *colcon_ignore
+  ros2/rosidl_typesupport_opensplice: *colcon_ignore

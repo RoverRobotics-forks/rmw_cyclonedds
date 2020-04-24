@@ -18,4 +18,4 @@ jobs:
       uses: ros-tooling/action-ros-ci@0.0.15
       with:
         package-name: rmw_cyclonedds_cpp
-        vcs-repo-file-url: https://raw.githubusercontent.com/ros2/ros2/${{ matrix.rosdistro }}/ros2.repos https://gist.githubusercontent.com/rotu/8dfc360c364893fed24e171d4ddbba12/raw/
+        vcs-repo-file-url: https://raw.githubusercontent.com/ros2/ros2/${{ matrix.rosdistro }}/ros2.repos https://github.com/${{github.repository}}/raw/${{github.sha}}/.github/resources/suppress_other_rmw.repos
