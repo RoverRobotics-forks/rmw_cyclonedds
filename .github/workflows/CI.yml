@@ -31,7 +31,7 @@ jobs:
           rmw_cyclonedds_cpp
           rmw_implementation
         target-ros2-distro: ${{matrix.rosdistro}}
-        colcon-mixin-name: coverage-gcc
+        extra-cmake-args: "--coverage"
         vcs-repo-file-url: >
           https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
@@ -40,4 +40,3 @@ jobs:
       with:
         path: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/log
       if: always()  # upload the logs even when the build fails
-
