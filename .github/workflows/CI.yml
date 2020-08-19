@@ -5,8 +5,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          rosdistro: [master]
+          rosdistro: [rolling]
           os: [ubuntu-18.04, ubuntu-20.04, macOS-latest, windows-latest]
+          include:
+          - rosdistro: rolling
+            repos_branch: master
     runs-on: ${{ matrix.os }}
     steps:
     - if: runner.os == 'Windows'
@@ -26,6 +29,8 @@ jobs:
         package-name: >
           rmw_cyclonedds_cpp
           rmw_implementation
+        target-ros2-distro: ${{matrix.rosdistro}}
         vcs-repo-file-url: >
-          https://raw.githubusercontent.com/ros2/ros2/${{ matrix.rosdistro }}/ros2.repos
+          https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
+
