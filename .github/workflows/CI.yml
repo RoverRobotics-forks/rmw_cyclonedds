@@ -68,5 +68,5 @@ jobs:
           **/*.info
           **/*.coverage
           **/*.gcno
-          /**/*.gcda
+          **/*.gcda
       if: always()  # upload the logs even when the build fails
