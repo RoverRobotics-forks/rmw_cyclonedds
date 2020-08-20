@@ -25,6 +25,7 @@ jobs:
       run: |
         echo ::set-env name=CFLAGS::$CFLAGS --coverage
         echo ::set-env name=CXXFLAGS::$CXXFLAGS --coverage
+        echo ::set-env name=COLCON_CMAKE_ARGS::-DCMAKE_BUILD_TYPE=Debug
     - name: Acquire ROS dependencies
       uses: ros-tooling/setup-ros@master
       with:
@@ -34,7 +35,6 @@ jobs:
       uses: ros-tooling/action-ros-ci@master
       env:
         RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
-        CMAKE_CONFIG_TYPE: Debug
       with:
         package-name: >
           rmw_cyclonedds_cpp
