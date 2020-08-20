@@ -23,6 +23,8 @@ jobs:
       run: sed -e 's/azure.archive.ubuntu.com/us.archive.ubuntu.com/g' -e t -e d /etc/apt/sources.list | sudo tee /etc/apt/sources.list.d/nonazure.list
     - name: Acquire ROS dependencies
       uses: ros-tooling/setup-ros@0.0.25
+    - if: runner.os == Linux
+      run: echo "::set-env name=COLCON_CMAKE_ARGS::-DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage"
     - name: Build and test ROS
       id: ros_ci
       uses: ros-tooling/action-ros-ci@0.0.19
@@ -31,7 +33,7 @@ jobs:
           rmw_cyclonedds_cpp
           rmw_implementation
         target-ros2-distro: ${{matrix.rosdistro}}
-        extra-cmake-args: ${{ runner.os == Linux ? "-DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage" : ""}}
+        extra-cmake-args: ${{env.COLCON_CMAKE_ARGS}}
         vcs-repo-file-url: >
           https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
