@@ -28,8 +28,6 @@ jobs:
         echo ::set-env name=COLCON_CMAKE_ARGS::-DCMAKE_BUILD_TYPE=Debug
     - name: Acquire ROS dependencies
       uses: ros-tooling/setup-ros@master
-      with:
-        required-ros-distributions: ${{matrix.rosdistro}}
     - name: Build and test ROS
       id: ros_ci
       uses: ros-tooling/action-ros-ci@master
