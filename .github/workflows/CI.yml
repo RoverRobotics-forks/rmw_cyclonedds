@@ -56,16 +56,15 @@ jobs:
         file: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov/total_coverage.info
         fail_ci_if_error: false
     - run: find ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}
-    - name: Upload lcov logs
+    - name: Upload debug stuff
       uses: actions/upload-artifact@v2
       with:
-        name: lcov
-        path: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov
-      if: always()  # upload the logs even when the build fails
-
-    - name: Upload colcon logs
-      uses: actions/upload-artifact@v2
-      with:
-        name: colcon-log
-        path: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/log
+        name: debugstuff
+        path: |
+          ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov
+          ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/log
+          **/*.info
+          **/*.coverage
+          **/*.gcno
+          **/*.gcda
       if: always()  # upload the logs even when the build fails
