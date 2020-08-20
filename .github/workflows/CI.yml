@@ -32,8 +32,7 @@ jobs:
           rmw_implementation
         target-ros2-distro: ${{matrix.rosdistro}}
         extra-cmake-args: > 
-          -DCMAKE_CXX_FLAGS='$<$<CXX_COMPILER_ID:GNU>:--coverage>'
-          -DCMAKE_C_FLAGS='$<$<C_COMPILER_ID:GNU>:--coverage>'
+          ${{ runner.os == "Linux" ? "-DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage" : ""}}
         vcs-repo-file-url: >
           https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
