@@ -40,6 +40,7 @@ jobs:
           rmw_implementation
         target-ros2-distro: ${{matrix.rosdistro}}
         extra-cmake-args: ${{env.COLCON_CMAKE_ARGS}}
+        colcon-mixin-name: coverage-gcc
         vcs-repo-file-url: >
           https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
