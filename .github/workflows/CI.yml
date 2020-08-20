@@ -39,16 +39,18 @@ jobs:
         vcs-repo-file-url: >
           https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
-    - name: Coveralls
+        coverage-ignore-pattern: i-should-not-need-this-argument
+    - if: runner.os == 'Linux'
+      name: Coveralls
       uses: coverallsapp/github-action@master
       with:
         path-to-lcov: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov/total_coverage.info
         github-token: ${{ secrets.GITHUB_TOKEN }}
-    - uses: codecov/codecov-action@v1.0.10
+    - if: runner.os == 'Linux'
+      uses: codecov/codecov-action@v1.0.10
       with:
         file: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov/total_coverage.info
         fail_ci_if_error: false
-    
     - name: Upload colcon logs
       uses: actions/upload-artifact@v2
       with:
