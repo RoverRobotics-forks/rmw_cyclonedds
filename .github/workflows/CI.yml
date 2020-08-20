@@ -69,4 +69,5 @@ jobs:
           **/*.coverage
           **/*.gcno
           **/*.gcda
+          **/CMakeCache.txt
       if: always()  # upload the logs even when the build fails
