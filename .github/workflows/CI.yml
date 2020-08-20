@@ -23,14 +23,12 @@ jobs:
       run: sed -e 's/azure.archive.ubuntu.com/us.archive.ubuntu.com/g' -e t -e d /etc/apt/sources.list | sudo tee /etc/apt/sources.list.d/nonazure.list
     - name: Acquire ROS dependencies
       uses: ros-tooling/setup-ros@0.0.25
-    - if: runner.os == 'Linux'
-      run: |
-        echo "::set-env name=CFLAGS::--coverage"
-        echo "::set-env name=CFXXLAGS::--coverage"
     - name: Build and test ROS
       id: ros_ci
       uses: ros-tooling/action-ros-ci@0.0.19
       with:
+        colcon-mixin-name: coverage-gcc
+        colcon-mixin-repository: https://raw.githubusercontent.com/colcon/colcon-mixin-repository/master/index.yaml
         package-name: >
           rmw_cyclonedds_cpp
           rmw_implementation
@@ -39,6 +37,16 @@ jobs:
         vcs-repo-file-url: >
           https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
+          
+    - uses: codecov/codecov-action@v1.0.10
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov/total_coverage.info
+        flags: unittests
+        name: codecov-umbrella
+        yml: ./codecov.yml
+        fail_ci_if_error: true   
+    
     - name: Upload colcon logs
       uses: actions/upload-artifact@v2
       with:
