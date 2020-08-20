@@ -34,6 +34,7 @@ jobs:
       uses: ros-tooling/action-ros-ci@master
       env:
         RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+        CMAKE_CONFIG_TYPE: Debug
       with:
         package-name: >
           rmw_cyclonedds_cpp
