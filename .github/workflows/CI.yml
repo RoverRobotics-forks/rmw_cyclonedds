@@ -44,12 +44,8 @@ jobs:
         github-token: ${{ secrets.GITHUB_TOKEN }}
     - uses: codecov/codecov-action@v1.0.10
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
         file: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov/total_coverage.info
-        flags: unittests
-        name: codecov-umbrella
-        yml: ./codecov.yml
-        fail_ci_if_error: true   
+        fail_ci_if_error: false
     
     - name: Upload colcon logs
       uses: actions/upload-artifact@v2
