@@ -27,6 +27,8 @@ jobs:
         echo ::set-env name=CXXFLAGS::$CXXFLAGS --coverage
     - name: Acquire ROS dependencies
       uses: ros-tooling/setup-ros@0.0.25
+      with:
+        ros_distribution: ${{matrix.rosdistro}}
     - name: Build and test ROS
       id: ros_ci
       uses: ros-tooling/action-ros-ci@0.0.19
