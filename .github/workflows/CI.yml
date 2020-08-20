@@ -37,7 +37,11 @@ jobs:
         vcs-repo-file-url: >
           https://raw.githubusercontent.com/ros2/ros2/${{ matrix.repos_branch }}/ros2.repos
           https://raw.githubusercontent.com/${{github.repository}}/${{github.sha}}/.github/resources/suppress_other_rmw.repos
-          
+    - name: Coveralls
+      uses: coverallsapp/github-action@master
+      with:
+        path-to-lcov: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/lcov/total_coverage.info
+        github-token: ${{ secrets.GITHUB_TOKEN }}
     - uses: codecov/codecov-action@v1.0.10
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -53,7 +57,3 @@ jobs:
         name: colcon-log
         path: ${{ steps.ros_ci.outputs.ros-workspace-directory-name }}/log
       if: always()  # upload the logs even when the build fails
-    - name: Coveralls
-      uses: coverallsapp/github-action@master
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
